@@ -1,425 +1,318 @@
-function render(){
-  const league = getLeague(state.trophies);
-  document.getElementById('coins').textContent = formatNum(state.coins);
-  document.getElementById('gems').textContent = state.gems;
-  document.getElementById('trophies').textContent = state.trophies;
-  document.getElementById('income').textContent = '+' + computeIncomePerMin() + '/m';
-  document.getElementById('zooLvl').textContent = state.zooLevel;
-  const lb = document.getElementById('league-badge'); lb.innerHTML = league.icon + ' ' + league.name; lb.style.color = league.color;
-  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab===state.currentTab));
-  const c = document.getElementById('content');
-  const tabChanged = lastRenderedTab !== state.currentTab;
-  if(tabChanged) c.scrollTop = 0;
-  lastRenderedTab = state.currentTab;
-  if(state.currentTab==='zoo') renderZoo(c);
-  else if(state.currentTab==='arena') renderArena(c);
-  else if(state.currentTab==='classement') renderClassement(c);
-  else if(state.currentTab==='collection') renderCollection(c);
-  else if(state.currentTab==='shop') renderShop(c);
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{--bg:#0a1512;--card:#152118;--card2:#1c2b20;--border:#1f2e24;--border-strong:#2a3a2e;--text:#e8f0eb;--soft:#8fa89a;--primary:#2ecc71;--primary-dark:#27ae60;--accent:#f39c12;--danger:#e74c3c;--purple:#b579d4;--gold:#ffd700;--shadow:0 4px 16px rgba(0,0,0,.4);--shadow-lg:0 12px 32px rgba(0,0,0,.6);--safe-bottom:env(safe-area-inset-bottom,0px);--safe-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);overflow:hidden;overscroll-behavior:none}
+#app{display:flex;flex-direction:column;height:100%;max-width:520px;margin:0 auto;position:relative;background:var(--bg)}
+
+#hud{padding:calc(10px + var(--safe-top)) 14px 10px;background:linear-gradient(135deg,#0e2418 0%,#143a24 60%,#1a4a2e 100%);box-shadow:0 2px 16px rgba(0,0,0,.5);border-bottom:1px solid var(--border-strong);z-index:10}
+.hud-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.logo{font-weight:900;font-size:16px;letter-spacing:1.5px;color:var(--primary);text-shadow:0 0 20px rgba(46,204,113,.4)}
+.resources{display:flex;gap:5px}
+.res{display:flex;align-items:center;gap:3px;background:rgba(0,0,0,.35);padding:4px 8px;border-radius:999px;font-weight:800;font-size:11px;border:1px solid var(--border-strong)}
+.res-icon{font-size:13px}.res-sub{font-size:8px;opacity:.7;margin-left:2px;color:var(--primary)}
+.hud-sub{display:flex;gap:8px;font-size:10px;font-weight:700;align-items:center}
+.hud-sub>div:first-child{color:var(--soft)}
+.league-pill{margin-left:auto;background:rgba(0,0,0,.35);padding:3px 9px;border-radius:999px;border:1px solid var(--border-strong);font-weight:800;font-size:10px}
+
+#content{flex:1;overflow-y:auto;padding:14px 12px calc(90px + var(--safe-bottom));-webkit-overflow-scrolling:touch}
+
+/* ONGLETS (COLLÉS EN BAS ET TRÈS GROS) */
+#tabs{
+  position:absolute;
+  bottom:0; /* Collé tout en bas, pas d'espace */
+  left:0;
+  right:0;
+  display:flex;
+  background:#0a1512;
+  border-top:1px solid var(--border);
+  border-radius:16px 16px 0 0;
+  padding:12px 4px calc(8px + var(--safe-bottom)); /* Un peu plus haut pour tout faire tenir */
+  gap:2px;
+  box-shadow:0 -4px 20px rgba(0,0,0,.8);
+  z-index:20;
+}
+#tabs button{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:4px;
+  padding:8px 2px;
+  border:none;
+  background:transparent;
+  border-radius:10px;
+  font-size:28px; /* Icônes GÉANTES (le logo Netlify ne gênera plus) */
+  cursor:pointer;
+  transition:all .2s;
+  color:var(--soft);
+  font-family:inherit;
+}
+#tabs button span{
+  font-size:12px; /* Texte bien lisible */
+  font-weight:800;
+}
+#tabs button.active{
+  background:rgba(46,204,113,.15);
+  color:var(--primary);
 }
 
-function renderAnimalCardHTML(animal, st, opts){
-  opts = opts || {};
-  const r = RARITIES[animal.rarity]; const elemInfo = ELEMENTS[getElementOf(animal.id)];
-  const cap = zooCap(); const isMax = st.level>=MAX_ANIMAL_LEVEL; const isCapped = st.level>=cap;
-  const needed = xpForLevel(st.level); const pct = (isMax||isCapped)?100:Math.min(100,(st.xp/needed)*100);
-  const stage = getEvolutionStage(st.level); const stageClass = stage===3?'stage3':(stage===2?'stage2':'');
-  const shinyClass = st.hasShiny?'shiny':''; const displayName = getDisplayName(animal, st.level);
-  const onClick = opts.onClick || `openAnimal('${animal.id}')`;
-  return `<div class="animal-card ${stageClass} ${shinyClass} ${isCapped&&!isMax?'capped':''}" style="border-left-color:${elemInfo.color}" onclick="${onClick}">
-    <div class="rarity-dot" style="background:${r.color}"></div>
-    <div class="elem-badge">${elemInfo.emoji}</div>
-    ${st.count>1?`<div class="count-badge">×${st.count}</div>`:''}
-    <div class="animal-emoji">${animal.emoji}${st.hasShiny?'✨':''}</div>
-    <div class="animal-name">${displayName}</div>
-    <div class="animal-level">${isMax?'MAX':(isCapped?'⛔ cap':('Niv. '+st.level))}</div>
-    <div class="animal-xp-bar"><div class="animal-xp-fill" style="width:${pct}%"></div></div>
-  </div>`;
-}
+.section-title{font-size:13px;font-weight:800;margin:14px 4px 8px;display:flex;align-items:center;gap:6px;color:var(--soft);text-transform:uppercase;letter-spacing:.8px}
+.empty{padding:40px 20px;text-align:center;color:var(--soft);font-size:13px;font-weight:600;line-height:1.6}
 
-function renderZoo(c){
-  let html = '';
-  if(isZooUpgrading()){
-    html += `<div class="upgrade-card"><div class="upgrade-title">⏳ Amélioration du zoo en cours</div><div class="upgrade-timer">${formatDuration(zooUpgradeRemainingMs())} restantes</div><div class="upgrade-info">Niveau ${state.zooLevel} → ${state.zooLevel+1}</div></div>`;
-  } else if(state.zooLevel < MAX_ZOO_LEVEL){
-    const cost = zooUpgradeCost(state.zooLevel); const can = state.coins>=cost.coins && state.gems>=cost.gems;
-    const nextCap = Math.min(MAX_ANIMAL_LEVEL,(state.zooLevel+1)*ZOO_CAP_PER_LEVEL); const dur = zooUpgradeDuration(state.zooLevel); const isInstant = dur === 0;
-    html += `<div class="upgrade-card"><div class="upgrade-title">⬆️ Améliorer le zoo</div><div class="upgrade-info">Niveau ${state.zooLevel} → ${state.zooLevel+1}<br>Niveau animal max : ${zooCap()} → ${nextCap}<br>Durée : ${isInstant?'⚡ Instantané':formatDuration(dur)}</div><div class="upgrade-cost"><span>🪙 ${formatNum(cost.coins)}</span><span>💎 ${cost.gems}</span></div><button class="upgrade-btn ${isInstant?'instant':''}" ${can?'':'disabled'} onclick="startZooUpgrade()">${isInstant?'⚡ Améliorer instantanément':"Lancer l'amélioration"}</button></div>`;
-  }
-  html += `<div class="arena-card"><div class="section-title" style="margin:0 0 8px">📊 Statistiques</div><div class="stats-grid-2"><div><span>🍽️ Repas</span><span>${state.stats.totalFeeds}</span></div><div><span>🥚 Œufs</span><span>${state.stats.eggsOpened}</span></div><div><span>⚔️ Victoires</span><span>${state.stats.arenaWins}</span></div><div><span>✨ Shiny</span><span>${state.stats.shinyFound}</span></div></div></div>`;
-  let hasAnimals = false;
-  for(const zoneKey of ['foret','ocean','montagne','legendaire']){
-    const zone = ZONES[zoneKey];
-    const ownedInZone = ANIMALS.filter(a=>a.zone===zoneKey && state.animals[a.id]?.owned);
-    if(ownedInZone.length===0) continue;
-    hasAnimals = true;
-    html += `<div class="section-title" style="color:${zone.color}">${zone.emoji} ${zone.name} · ${ownedInZone.length}/${ANIMALS.filter(a=>a.zone===zoneKey).length}</div><div class="animal-grid">`;
-    for(const animal of ownedInZone){ html += renderAnimalCardHTML(animal, state.animals[animal.id]); }
-    html += '</div>';
-  }
-  if(!hasAnimals) html += `<div class="empty">🦗<br><br>Pas encore d'animaux.<br>Ouvre des œufs dans la Boutique !</div>`;
-  c.innerHTML = html;
-}
+/* CARTES & ZOO */
+.upgrade-card{background:var(--card);border-radius:16px;padding:16px;box-shadow:var(--shadow);margin-bottom:14px;border:1px solid var(--accent)}
+.upgrade-title{font-size:14px;font-weight:900;color:var(--accent);margin-bottom:8px}
+.upgrade-info{font-size:11px;color:var(--soft);font-weight:700;margin-bottom:10px;line-height:1.6}
+.upgrade-cost{display:flex;gap:6px;margin-bottom:10px;font-size:12px;font-weight:800;flex-wrap:wrap}
+.upgrade-cost span{background:var(--card2);padding:5px 10px;border-radius:8px;border:1px solid var(--border-strong)}
+.upgrade-timer{background:rgba(243,156,18,.15);border:1px solid var(--accent);color:var(--accent);padding:10px;border-radius:10px;text-align:center;font-weight:800;font-size:13px;margin-bottom:10px}
+.upgrade-btn{width:100%;padding:12px;background:linear-gradient(135deg,var(--accent),#e67e22);color:#fff;border:none;border-radius:12px;font-weight:800;font-family:inherit;font-size:13px;cursor:pointer;box-shadow:0 4px 12px rgba(243,156,18,.3)}
+.upgrade-btn:disabled{background:var(--card2);color:#5a6a60;box-shadow:none;cursor:not-allowed}
+.upgrade-btn.instant{background:linear-gradient(135deg,var(--primary),var(--primary-dark));box-shadow:0 4px 12px rgba(46,204,113,.3)}
 
-function startZooUpgrade(){
-  if(isZooUpgrading() || state.zooLevel>=MAX_ZOO_LEVEL) return;
-  const cost = zooUpgradeCost(state.zooLevel);
-  if(state.coins<cost.coins) return showToast('Pas assez de pièces !','warn');
-  if(state.gems<cost.gems) return showToast('Pas assez de gemmes !','warn');
-  state.coins -= cost.coins; state.gems -= cost.gems;
-  const dur = zooUpgradeDuration(state.zooLevel);
-  if(dur===0){ state.zooLevel++; playUpgrade(); showToast(`🏞️ Zoo niveau ${state.zooLevel} !`,'success'); }
-  else { state.zooUpgradeEnd = Date.now() + dur; playBuy(); showToast('Amélioration lancée !','info'); }
-  save(); render();
-}
+.animal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.animal-card{background:var(--card);border-radius:14px;padding:10px 6px;text-align:center;cursor:pointer;position:relative;transition:all .15s;border:1px solid var(--border);border-left-width:4px}
+.animal-card:active{transform:scale(.94)}
+.animal-card.stage2{border-color:var(--gold);background:linear-gradient(160deg,rgba(255,215,0,.1),var(--card))}
+.animal-card.stage3{border-color:var(--purple);background:linear-gradient(160deg,rgba(181,121,212,.15),var(--card));animation:stageGlow 2s infinite}
+@keyframes stageGlow{0%,100%{box-shadow:0 0 0 0 rgba(181,121,212,.5)}50%{box-shadow:0 0 0 4px rgba(181,121,212,0)}}
+.animal-card.shiny{background:linear-gradient(160deg,rgba(255,215,0,.25),var(--card))}
+.animal-card.capped{opacity:.7}
+.animal-emoji{font-size:30px;line-height:1;margin-bottom:4px;display:inline-block}
+.animal-card.shiny .animal-emoji{filter:drop-shadow(0 0 6px var(--gold))}
+.animal-name{font-size:10px;font-weight:800;line-height:1.15;margin-bottom:3px;min-height:22px;display:flex;align-items:center;justify-content:center;color:var(--text);gap:2px}
+.animal-level{font-size:9px;font-weight:800;color:var(--primary)}
+.animal-xp-bar{height:3px;background:rgba(0,0,0,.4);border-radius:999px;overflow:hidden;margin-top:3px}
+.animal-xp-fill{height:100%;background:linear-gradient(90deg,var(--primary),#4ade80);border-radius:999px}
+.rarity-dot{position:absolute;top:5px;right:5px;width:8px;height:8px;border-radius:50%;box-shadow:0 0 0 2px var(--card)}
+.elem-badge{position:absolute;top:5px;left:5px;font-size:12px}
+.count-badge{position:absolute;bottom:5px;right:5px;background:var(--primary);color:#0a1512;font-size:9px;font-weight:900;padding:1px 5px;border-radius:999px}
 
-function renderArena(c){
-  if(state.arenaTeam.length===0) state.arenaTeam = pickBestTeam();
-  state.arenaTeam = state.arenaTeam.filter(id=>state.animals[id]?.owned);
-  while(state.arenaTeam.length<3){
-    const owned = Object.keys(state.animals).filter(id=>state.animals[id].owned && !state.arenaTeam.includes(id));
-    if(owned.length===0) break;
-    owned.sort((a,b)=>animalPower(ANIMAL_MAP[b],state.animals[b].level)-animalPower(ANIMAL_MAP[a],state.animals[a].level));
-    state.arenaTeam.push(owned[0]);
-  }
-  const league = getLeague(state.trophies); const myRank = calculateRank(state.trophies);
-  const myPower = state.arenaTeam.reduce((s,id)=>s+animalPower(ANIMAL_MAP[id],state.animals[id].level),0);
-  let html = `<div class="arena-card"><div class="arena-header"><div class="league-big" style="color:${league.color}">${league.icon} ${league.name}</div><div class="league-sub">${state.trophies} 🏆 · Classement #${myRank}</div></div><div style="text-align:center;font-size:11px;color:var(--soft);font-weight:700;margin-bottom:10px">Puissance : ${formatNum(myPower)}</div><div class="section-title" style="margin:0 0 8px">Ton équipe</div><div class="team-picker">`;
-  for(let i=0;i<3;i++){
-    const id = state.arenaTeam[i];
-    if(id && state.animals[id]){
-      const animal = ANIMAL_MAP[id]; const st = state.animals[id]; const elemInfo = ELEMENTS[getElementOf(id)];
-      html += `<div class="team-slot filled" onclick="openTeamPicker(${i})"><div class="team-slot-emoji">${animal.emoji}${st.hasShiny?'✨':''}</div><div class="team-slot-name">${animal.name} ${elemInfo.emoji}</div><div class="team-slot-lvl">Niv. ${st.level}</div></div>`;
-    } else {
-      html += `<div class="team-slot" onclick="openTeamPicker(${i})"><div class="team-slot-emoji">➕</div><div class="team-slot-name">Ajouter</div></div>`;
-    }
-  }
-  html += `</div>`;
-  const canFight = state.arenaTeam.length===3 && !combat;
-  html += `<button class="arena-btn" ${canFight?'':'disabled'} onclick="startArena()">⚔️ TROUVER UN ADVERSAIRE</button></div>`;
-  if(state.arenaHistory.length>0){
-    html += `<div class="arena-card"><div class="section-title" style="margin:0 0 8px">Derniers combats</div><div class="history-list">`;
-    for(const h of state.arenaHistory.slice(-5).reverse()){
-      html += `<div class="history-row"><span class="result ${h.win?'win':'loss'}">${h.win?'VICTOIRE':'DÉFAITE'}</span><span class="name">${h.oppName}</span><span class="tr" style="color:${h.win?'var(--primary)':'var(--danger)'}">${h.trophyChange>0?'+'+h.trophyChange:h.trophyChange} 🏆</span></div>`;
-    }
-    html += `</div></div>`;
-  }
-  c.innerHTML = html;
-}
+/* COLLECTION */
+.collection-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px}
+.coll-card{background:var(--card);border-radius:12px;padding:8px 4px;text-align:center;border-left:3px solid var(--rarity-color,#ccc);border-top:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border)}
+.coll-card.locked{opacity:.4;background:repeating-linear-gradient(45deg,var(--card),var(--card) 5px,var(--bg) 5px,var(--bg) 10px)}
+.coll-emoji{font-size:24px;line-height:1;margin-bottom:3px}
+.coll-name{font-size:8px;font-weight:800;line-height:1.1;color:var(--text)}
+.coll-rarity{font-size:7px;font-weight:700;text-transform:uppercase;margin-top:2px}
 
-function pickBestTeam(){
-  const owned = Object.keys(state.animals).filter(id=>state.animals[id].owned);
-  owned.sort((a,b)=>animalPower(ANIMAL_MAP[b],state.animals[b].level)-animalPower(ANIMAL_MAP[a],state.animals[a].level));
-  return owned.slice(0,3);
-}
+/* BANNIÈRES DE ZONE */
+.zone-banner{background:var(--card);border-radius:14px;padding:12px;margin-bottom:12px;border:1px solid var(--border);border-left:4px solid var(--primary)}
+.zone-banner.locked{opacity:.65}
+.banner-title{font-size:14px;font-weight:900;margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.banner-sub{font-size:11px;color:var(--soft);font-weight:700;margin-bottom:8px}
+.banner-progress{height:5px;background:rgba(0,0,0,.5);border-radius:999px;overflow:hidden}
+.banner-progress-fill{height:100%;background:linear-gradient(90deg,var(--primary),#4ade80);border-radius:999px;transition:width .4s}
 
-function openTeamPicker(slotIndex){
-  currentTeamSlot = slotIndex;
-  const owned = Object.keys(state.animals).filter(id=>state.animals[id].owned);
-  owned.sort((a,b)=>animalPower(ANIMAL_MAP[b],state.animals[b].level)-animalPower(ANIMAL_MAP[a],state.animals[a].level));
-  let html = `<div class="modal-bg" onclick="closeModal(event)"><div class="modal-sheet" onclick="event.stopPropagation()"><div class="modal-handle"></div><div style="padding:16px 18px 8px; display:flex; justify-content:space-between; align-items:center;"><div style="font-size:16px;font-weight:900">Choisir un animal</div><button onclick="closeModal()" style="background:transparent;border:none;color:var(--soft);font-size:14px;font-weight:800;cursor:pointer">✕ Fermer</button></div><div class="team-pick-list">`;
-  for(const id of owned){
-    const animal = ANIMAL_MAP[id]; const st = state.animals[id];
-    const isSelectedHere = state.arenaTeam[slotIndex] === id; const isElsewhere = state.arenaTeam.includes(id) && state.arenaTeam.indexOf(id) !== slotIndex;
-    const elemInfo = ELEMENTS[getElementOf(id)];
-    html += `<div class="pick-card ${isSelectedHere ? 'selected' : ''}" onclick="${isSelectedHere ? '' : `pickTeamAnimal('${id}')`}"><div class="pick-emoji">${animal.emoji}${st.hasShiny?'✨':''}</div><div class="pick-name">${animal.name} ${elemInfo.emoji}</div><div class="pick-lvl">Niv. ${st.level}</div>${isElsewhere ? '<div style="font-size:8px;color:var(--accent);font-weight:900;margin-top:2px">Équipe (clic=échange)</div>' : ''}</div>`;
-  }
-  html += `</div></div></div>`;
-  const root = document.getElementById('modal-root'); root.innerHTML = html;
-  const bg = root.querySelector('.modal-bg'); void bg.offsetWidth; bg.classList.add('open');
-}
+/* ARÈNE */
+.arena-card{background:var(--card);border-radius:16px;padding:16px;box-shadow:var(--shadow);margin-bottom:14px;border:1px solid var(--border)}
+.arena-header{text-align:center;margin-bottom:14px}
+.league-big{font-size:26px;font-weight:900;line-height:1;letter-spacing:.5px}
+.league-sub{font-size:11px;color:var(--soft);font-weight:700;margin-top:6px}
+.team-picker{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+.team-slot{background:var(--card2);border-radius:14px;padding:10px 4px;text-align:center;border:2px dashed var(--border-strong);cursor:pointer;position:relative;min-height:76px;display:flex;flex-direction:column;justify-content:center;align-items:center}
+.team-slot.filled{border-style:solid;border-color:var(--primary);background:var(--card)}
+.team-slot-emoji{font-size:26px;line-height:1;margin-bottom:2px}
+.team-slot-name{font-size:9px;font-weight:800}
+.team-slot-lvl{font-size:8px;color:var(--soft);font-weight:700}
+.arena-btn{width:100%;padding:14px;background:linear-gradient(135deg,var(--danger),#c0392b);color:#fff;border:none;border-radius:14px;font-weight:900;font-family:inherit;font-size:15px;cursor:pointer;box-shadow:0 4px 16px rgba(231,76,60,.4);letter-spacing:.5px;margin-bottom:10px}
+.arena-btn:disabled{background:var(--card2);color:#5a6a60;box-shadow:none;cursor:not-allowed}
+.history-list{margin-top:12px}
+.history-row{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;font-size:11px;border-radius:8px;background:var(--card2);margin-bottom:4px}
+.history-row .result{font-weight:900;min-width:60px}
+.history-row .result.win{color:var(--primary)}
+.history-row .result.loss{color:var(--danger)}
+.history-row .name{flex:1;font-weight:700;color:var(--text);margin:0 8px}
+.history-row .tr{font-weight:800;color:var(--accent);font-size:11px}
 
-function pickTeamAnimal(id){
-  if(currentTeamSlot === null) return;
-  const existingIdx = state.arenaTeam.indexOf(id);
-  if(existingIdx >= 0 && existingIdx !== currentTeamSlot){
-    const old = state.arenaTeam[currentTeamSlot]; state.arenaTeam[currentTeamSlot] = id; state.arenaTeam[existingIdx] = old;
-  } else { state.arenaTeam[currentTeamSlot] = id; }
-  state.arenaTeam = state.arenaTeam.filter(x=>x);
-  closeModal(); save(); render(); playClick();
-}
+/* STATS */
+.stats-grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;font-size:11px;font-weight:700;margin-bottom:12px}
+.stats-grid-2>div{background:var(--card2);padding:8px 10px;border-radius:10px;border:1px solid var(--border);display:flex;justify-content:space-between}
+.stats-grid-2>div span:last-child{color:var(--primary);font-weight:900}
 
-function renderClassement(c){
-  const myRank = calculateRank(state.trophies); const league = getLeague(state.trophies); const top100 = getTop100Players();
-  let html = `<div class="rank-tab-header"><div class="big" style="color:${league.color}">${league.icon}</div><div class="sub">${league.name} · Classement #${myRank}</div><div class="trophy-row">${state.trophies} 🏆</div></div>`;
-  html += `<div class="section-title">🌍 Top 100 mondial</div><div class="top100-list">`;
-  for(const p of top100){
-    const pLeague = getLeague(p.trophies); const isMe = p.rank===myRank;
-    const medal = p.rank===1?'👑':p.rank===2?'🥈':p.rank===3?'🥉':''; const topClass = p.rank<=3?'top'+p.rank:'';
-    html += `<div class="rank-item ${topClass} ${isMe?'me':''}"><span class="rank-pos">#${p.rank}</span><span class="rank-emoji">${medal||pLeague.icon}</span><span class="rank-name">${p.name}</span><span class="rank-trophies">${formatNum(p.trophies)} 🏆</span></div>`;
-  }
-  html += `</div>`; c.innerHTML = html;
-}
+/* BOUTIQUE */
+.shop-card{background:var(--card);border-radius:14px;padding:12px;display:flex;align-items:center;gap:10px;margin-bottom:10px;border:1px solid var(--border);position:relative}
+.shop-icon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;background:var(--card2)}
+.shop-info{flex:1;min-width:0}
+.shop-name{font-size:13px;font-weight:800;margin-bottom:2px}
+.shop-desc{font-size:10px;color:var(--soft);font-weight:600;margin-bottom:2px}
+.shop-owned{font-size:10px;color:var(--soft);font-weight:700}
+.shop-buy{padding:8px 10px;background:linear-gradient(135deg,var(--primary),#4ade80);color:#0a1512;border:none;border-radius:10px;font-weight:900;font-size:10px;font-family:inherit;cursor:pointer;flex-shrink:0;white-space:nowrap;margin-left:2px}
+.shop-buy:disabled{background:var(--card2);color:#5a6a60;cursor:not-allowed}
+.shop-buy-row{display:flex;flex-direction:column;gap:3px;flex-shrink:0}
 
-function renderCollection(c){
-  const total = ANIMALS.length, owned = ownedCount(), pct = (owned/total)*100;
-  let html = `<div class="arena-card" style="text-align:center"><div style="font-size:20px;font-weight:900;margin-bottom:4px">📖 Encyclopédie</div><div style="font-size:12px;color:var(--soft);font-weight:700;margin-bottom:8px">${owned} / ${total} animaux</div><div class="banner-progress"><div class="banner-progress-fill" style="width:${pct}%"></div></div></div>`;
-  for(const zoneKey of ['foret','ocean','montagne','legendaire']){
-    const zone = ZONES[zoneKey]; const animals = ANIMALS.filter(a=>a.zone===zoneKey); const ownedInZone = animals.filter(a=>state.animals[a.id]?.owned); const unlocked = state.zoneUnlocked[zoneKey];
-    let req = '';
-    if(!unlocked){
-      if(zoneKey==='ocean') req = `🔒 3 Forêt niv. 3 (${Math.min(countAtLevelInZone('foret',3),3)}/3)`;
-      if(zoneKey==='montagne') req = `🔒 3 Océan niv. 6 (${Math.min(countAtLevelInZone('ocean',6),3)}/3)`;
-      if(zoneKey==='legendaire') req = `🔒 3 Montagne niv. 15 + 200 🏆`;
-    }
-    html += `<div class="zone-banner ${unlocked?'':'locked'}"><div class="banner-title" style="color:${zone.color}">${zone.emoji} ${zone.name}</div><div class="banner-sub">${ownedInZone.length}/${animals.length} possédés${!unlocked?' · '+req:''}</div><div class="banner-progress"><div class="banner-progress-fill" style="width:${(ownedInZone.length/animals.length)*100}%"></div></div></div><div class="collection-grid">`;
-    for(const animal of animals){
-      const st = state.animals[animal.id]; const r = RARITIES[animal.rarity]; const elemInfo = ELEMENTS[getElementOf(animal.id)];
-      if(st?.owned){ html += `<div class="coll-card" style="--rarity-color:${r.color}"><div class="coll-emoji">${animal.emoji}${st.hasShiny?'✨':''}</div><div class="coll-name">${animal.name} ${elemInfo.emoji}</div><div class="coll-rarity" style="color:${r.color}">${r.name}</div></div>`; }
-      else { html += `<div class="coll-card locked" style="--rarity-color:${r.color}"><div class="coll-emoji">❓</div><div class="coll-name">???</div><div class="coll-rarity">${r.name}</div></div>`; }
-    }
-    html += '</div>';
-  }
-  c.innerHTML = html;
-}
+/* CLASSEMENT */
+.rank-tab-header{background:var(--card);padding:12px;border-radius:16px;margin-bottom:12px;border:1px solid var(--border);text-align:center}
+.rank-tab-header .big{font-size:30px;font-weight:900;color:var(--primary);line-height:1}
+.rank-tab-header .sub{font-size:12px;color:var(--soft);font-weight:700;margin-top:4px}
+.rank-tab-header .trophy-row{font-size:14px;font-weight:900;color:var(--gold);margin-top:6px}
+.top100-list{background:var(--card);border-radius:14px;overflow:hidden;border:1px solid var(--border)}
+.rank-item{display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px}
+.rank-item.top1{background:linear-gradient(90deg,rgba(255,215,0,.15),transparent)}
+.rank-item.top2{background:linear-gradient(90deg,rgba(192,192,192,.1),transparent)}
+.rank-item.top3{background:linear-gradient(90deg,rgba(205,127,50,.1),transparent)}
+.rank-item.me{background:rgba(46,204,113,.15);border-left:3px solid var(--primary)}
+.rank-pos{font-weight:900;min-width:38px;color:var(--soft);font-size:12px}
+.rank-item.top1 .rank-pos,.rank-item.top2 .rank-pos,.rank-item.top3 .rank-pos{color:var(--gold)}
+.rank-emoji{font-size:14px;margin-right:6px;width:18px;text-align:center}
+.rank-name{flex:1;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rank-item.me .rank-name{color:var(--primary);font-weight:900}
+.rank-trophies{font-weight:800;color:var(--accent);font-size:11px;margin-left:6px}
 
-function renderShop(c){
-  let html = `<div class="section-title">🥚 Œufs par rareté</div>`;
-  const eggs = [
-    {key:'commun',name:'Œuf Commun',emoji:'🥚',cost:500,pools:{commun:80,rare:18,epique:2}},
-    {key:'rare',name:'Œuf Rare',emoji:'🥚',cost:2500,pools:{rare:70,epique:25,legendaire:5}},
-    {key:'epique',name:'Œuf Épique',emoji:'🥚',cost:10000,pools:{epique:65,legendaire:30,mythique:5}},
-    {key:'legendaire',name:'Œuf Légendaire',emoji:'🥚',cost:50000,pools:{legendaire:70,mythique:30}}
-  ];
-  for(const egg of eggs){
-    const can = state.coins>=egg.cost;
-    html += `<div class="shop-card"><div class="shop-icon">${egg.emoji}</div><div class="shop-info"><div class="shop-name">${egg.name}</div><div class="shop-desc">Communs autorisés</div><div class="shop-owned">${Object.entries(egg.pools).map(([k,v])=>RARITIES[k].name[0]+v+'%').join(' · ')}</div></div><div class="shop-buy-row"><button class="shop-buy" ${!can?'disabled':''} onclick="buyEgg('${egg.key}',1)">🪙${formatNum(egg.cost)}</button><button class="shop-buy" ${!can||state.coins<egg.cost*5?'disabled':''} onclick="buyEgg('${egg.key}',5)">×5</button><button class="shop-buy" ${!can||state.coins<egg.cost*10?'disabled':''} onclick="buyEgg('${egg.key}',10)">×10</button></div></div>`;
-  }
-  html += `<div class="section-title">💎 Échange</div><div class="shop-card"><div class="shop-icon">🪙</div><div class="shop-info"><div class="shop-name">500 pièces</div><div class="shop-desc">5 gemmes → 500 pièces</div></div><button class="shop-buy" ${state.gems<5?'disabled':''} onclick="buyCoins()">5 💎</button></div><div class="shop-card"><div class="shop-icon">💎</div><div class="shop-info"><div class="shop-name">5 gemmes</div><div class="shop-desc">5 000 pièces → 5 gemmes</div></div><button class="shop-buy" ${state.coins<5000?'disabled':''} onclick="buyGems()">5000🪙</button></div><button style="margin-top:20px;width:100%;padding:10px;background:transparent;border:1px solid rgba(231,76,60,.3);color:var(--danger);border-radius:10px;font-weight:700;font-family:inherit;font-size:12px;cursor:pointer" onclick="resetGame()">🔄 Réinitialiser la partie</button>`;
-  c.innerHTML = html;
-}
+/* MODALES & ANIMAUX */
+#modal-root{position:fixed;inset:0;pointer-events:none;z-index:100}
+.modal-bg{position:absolute;inset:0;background:rgba(0,0,0,0);display:flex;align-items:flex-end;justify-content:center;transition:background .25s;pointer-events:auto}
+.modal-bg.open{background:rgba(0,0,0,.75)}
+.modal-sheet{background:var(--card);width:100%;max-width:520px;border-radius:24px 24px 0 0;max-height:92vh;overflow-y:auto;transform:translateY(100%);transition:transform .32s cubic-bezier(.32,.72,0,1);padding-bottom:calc(20px + var(--safe-bottom));border-top:1px solid var(--border-strong)}
+.modal-bg.open .modal-sheet{transform:translateY(0)}
+.modal-handle{width:40px;height:4px;background:var(--border-strong);border-radius:999px;margin:10px auto 0}
+.animal-hero{padding:20px;text-align:center;position:relative;overflow:hidden}
+.animal-hero::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 50% 40%,rgba(255,255,255,.12),transparent 60%)}
+.animal-hero.shiny::after{content:'';position:absolute;inset:0;background:radial-gradient(circle,rgba(255,215,0,.3),transparent 70%);pointer-events:none}
+.hero-emoji{font-size:80px;line-height:1;position:relative;filter:drop-shadow(0 8px 16px rgba(0,0,0,.5));display:inline-block}
+.hero-emoji.bounce{animation:bounce .5s}
+@keyframes bounce{0%{transform:scale(1)}30%{transform:scale(1.25) rotate(-5deg)}60%{transform:scale(.95)}100%{transform:scale(1)}}
+.hero-name{font-size:20px;font-weight:900;margin-top:6px;position:relative;text-shadow:0 2px 6px rgba(0,0,0,.5);color:#fff}
+.hero-badges{display:flex;gap:5px;justify-content:center;margin-top:6px;flex-wrap:wrap;position:relative}
+.badge{font-size:9px;font-weight:900;padding:3px 9px;border-radius:999px;color:#fff;letter-spacing:.5px;text-transform:uppercase;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+.modal-body{padding:16px 18px 0}
+.stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px}
+.stat-box{background:var(--card2);padding:8px 4px;border-radius:10px;text-align:center;border:1px solid var(--border)}
+.stat-box .lbl{font-size:9px;font-weight:800;color:var(--soft);text-transform:uppercase;letter-spacing:.5px}
+.stat-box .val{font-size:15px;font-weight:900;color:var(--primary);margin-top:2px}
+.xp-info{margin-bottom:12px}
+.xp-row{display:flex;justify-content:space-between;font-size:11px;font-weight:800;margin-bottom:4px;color:var(--text)}
+.xp-bar-large{height:10px;background:rgba(0,0,0,.5);border-radius:999px;overflow:hidden}
+.xp-fill-large{height:100%;background:linear-gradient(90deg,var(--primary),#4ade80);border-radius:999px;transition:width .5s}
 
-function resetGame(){
-  if(!confirm('⚠️ Réinitialiser TOUTE la partie ?')) return;
-  isResetting = true; clearTimeout(saveTimeout);
-  try{ Object.keys(localStorage).forEach(k=>{ if(k.startsWith('animalia_')) localStorage.removeItem(k); }); }catch(e){}
-  state = defaultState(); cachedTop100 = null; lastRenderedTab = null; combat = null; combatSpeed = 1;
-  document.getElementById('modal-root').innerHTML = '';
-  document.getElementById('combat-root').classList.remove('open'); document.getElementById('combat-root').innerHTML = '';
-  location.reload();
-}
+/* COMPÉTENCES & ATTAQUES SPÉCIALES */
+.special-card{background:linear-gradient(135deg,rgba(181,121,212,.12),var(--card2));border:1px solid var(--purple);border-radius:14px;padding:12px;margin-bottom:12px}
+.special-title{font-size:13px;font-weight:900;color:var(--purple);margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.special-desc{font-size:11px;color:var(--soft);font-weight:700;margin-bottom:8px;line-height:1.4}
+.special-lvl{display:flex;gap:3px;margin-bottom:8px}
+.special-pip{flex:1;height:6px;background:rgba(0,0,0,.4);border-radius:999px}
+.special-pip.filled{background:linear-gradient(90deg,var(--purple),#9b59b6)}
+.special-btn{width:100%;padding:9px;background:linear-gradient(135deg,var(--purple),#8e44ad);color:#fff;border:none;border-radius:10px;font-weight:800;font-family:inherit;font-size:12px;cursor:pointer}
+.special-btn:disabled{background:var(--card2);color:#5a6a60;cursor:not-allowed}
+.skills-section{margin-bottom:12px}
+.skills-title{font-size:13px;font-weight:900;color:var(--soft);margin-bottom:8px;text-transform:uppercase;letter-spacing:.8px}
+.skill-slots{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.skill-slot{background:var(--card2);border:1px solid var(--border-strong);border-radius:12px;padding:8px;text-align:center;cursor:pointer;transition:all .15s;min-height:70px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px}
+.skill-slot:active{transform:scale(.96)}
+.skill-slot.empty{border-style:dashed;color:var(--soft);font-size:11px;font-weight:700}
+.skill-slot .s-emoji{font-size:20px;line-height:1}
+.skill-slot .s-name{font-size:10px;font-weight:800;color:var(--text)}
+.skill-slot .s-lvl{font-size:9px;font-weight:700;color:var(--primary)}
+.skill-slot .s-pips{display:flex;gap:2px;margin-top:2px}
+.skill-slot .s-pip{width:8px;height:3px;background:rgba(0,0,0,.5);border-radius:1px}
+.skill-slot .s-pip.filled{background:var(--primary)}
+.sell-btn{width:100%;padding:10px;background:linear-gradient(135deg,#7a2a1e,#a04030);color:#fff;border:none;border-radius:10px;font-weight:800;font-family:inherit;font-size:12px;cursor:pointer;margin-top:12px}
 
-function openAnimal(id){
-  const animal = ANIMAL_MAP[id]; const st = state.animals[id];
-  if(!animal || !st?.owned) return;
-  currentModalAnimalId = id; renderAnimalModal(true);
-}
+/* NOURRITURE */
+.food-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}
+.food-btn{background:var(--card2);border:2px solid transparent;border-radius:14px;padding:10px 6px;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:2px;position:relative;transition:all .15s}
+.food-btn:active{transform:scale(.96)}
+.food-btn.fav{border-color:var(--accent);background:linear-gradient(160deg,rgba(243,156,18,.12),var(--card2))}
+.food-btn.fav::after{content:'★';position:absolute;top:5px;right:7px;color:var(--accent);font-size:11px}
+.food-btn:disabled{opacity:.4;cursor:not-allowed}
+.food-emoji{font-size:24px;line-height:1}
+.food-name{font-size:10px;font-weight:800;color:var(--text)}
+.food-xp{font-size:10px;font-weight:800;color:var(--primary)}
+.food-cost{font-size:9px;font-weight:700;color:var(--soft)}
 
-function renderAnimalModal(animate){
-  const id = currentModalAnimalId; if(!id) return;
-  const animal = ANIMAL_MAP[id]; const st = state.animals[id];
-  const r = RARITIES[animal.rarity]; const elemInfo = ELEMENTS[getElementOf(id)];
-  const stats = animalStats(animal,st.level); const cap = zooCap();
-  const isMax = st.level>=MAX_ANIMAL_LEVEL; const isCapped = st.level>=cap;
-  const needed = xpForLevel(st.level); const pct = (isMax||isCapped)?100:Math.min(100,(st.xp/needed)*100);
-  const canFeed = !isMax && !isCapped;
-  const special = animal.special; const specLvl = st.specialLvl;
-  const stage = getEvolutionStage(st.level); const stageName = stage===3?' 👑 Ancestral':(stage===2?' ⭐ Majeur':'');
-  const specUnlockCost = special.gemCost; const specUpgradeCost = special.gemCost*(specLvl+1);
-  const openClass = animate ? '' : 'open'; const displayName = animal.name + stageName + (st.hasShiny?' ✨':'');
-  const bg = `linear-gradient(135deg,${elemInfo.color}88,${elemInfo.color}44)`;
-  
-  // LIGNE XP CORRIGÉE ICI :
-  const xpText = isMax||isCapped ? '' : `${st.xp} / ${needed} XP`;
+/* SÉLECTION D'ÉQUIPE */
+.team-pick-list{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:0 18px 16px}
+.pick-card{background:var(--card2);border-radius:12px;padding:8px 4px;text-align:center;cursor:pointer;border:2px solid transparent;transition:all .15s}
+.pick-card.selected{border-color:var(--primary);background:var(--card)}
+.pick-emoji{font-size:26px;line-height:1;margin-bottom:2px}
+.pick-name{font-size:9px;font-weight:800;color:var(--text)}
+.pick-lvl{font-size:8px;color:var(--soft);font-weight:700}
 
-  let html = `<div class="modal-bg ${openClass}" onclick="closeModal(event)"><div class="modal-sheet" onclick="event.stopPropagation()"><div class="modal-handle"></div>
-    <div class="animal-hero ${st.hasShiny?'shiny':''}" style="background:${bg}"><div class="hero-emoji" id="hero-emoji">${animal.emoji}${st.hasShiny?'✨':''}</div><div class="hero-name">${displayName}</div><div class="hero-badges"><span class="badge" style="background:${r.color}">${r.name}</span><span class="badge" style="background:${elemInfo.color}">${elemInfo.emoji} ${elemInfo.name}</span>${st.count>1?`<span class="badge" style="background:var(--accent)">×${st.count}</span>`:''}</div></div>
-    <div class="modal-body">
-      <div class="stats-grid"><div class="stat-box"><div class="lbl">⚔️ Atk</div><div class="val">${stats.atk}</div></div><div class="stat-box"><div class="lbl">❤️ PV</div><div class="val">${stats.hp}</div></div><div class="stat-box"><div class="lbl">🛡️ Déf</div><div class="val">${stats.def}</div></div></div>
-      <div class="xp-info"><div class="xp-row"><span>Niveau ${st.level}${isMax?' ✨ MAX':(isCapped?' ⛔ cap':(' / '+cap))}</span><span>${xpText}</span></div><div class="xp-bar-large"><div class="xp-fill-large" style="width:${pct}%"></div></div>${isCapped&&!isMax?`<div style="font-size:11px;color:var(--danger);font-weight:800;margin-top:6px;text-align:center">⛔ Améliore le zoo pour dépasser niv. ${cap}</div>`:''}${stage<3?`<div style="font-size:10px;color:var(--accent);font-weight:800;margin-top:4px;text-align:center">Prochaine évolution au niveau ${stage===1?20:40}</div>`:''}</div>
-      <div class="special-card"><div class="special-title">⭐ ${special.name}</div><div class="special-desc">${specLvl>0?('Dégâts ×'+(special.effect==='lifesteal'?'1.5':'2')+' · niv. '+specLvl+'/5'):'Attaque spéciale à débloquer'}</div><div class="special-lvl">${[1,2,3,4,5].map(i=>`<div class="special-pip ${i<=specLvl?'filled':''}"></div>`).join('')}</div>${specLvl===0?`<button class="special-btn" ${state.gems<specUnlockCost?'disabled':''} onclick="unlockSpecial('${id}')">Débloquer · ${specUnlockCost} 💎</button>`:specLvl<5?`<button class="special-btn" ${state.gems<specUpgradeCost?'disabled':''} onclick="upgradeSpecial('${id}')">Améliorer · ${specUpgradeCost} 💎</button>`:`<button class="special-btn" disabled>✨ MAX</button>`}</div>
-      <div class="skills-section"><div class="skills-title">🎯 Compétences</div><div class="skill-slots">`;
-  for(let i=0;i<2;i++){
-    const skill = st.skills[i];
-    if(skill && SKILLS[skill.id]){
-      const s = SKILLS[skill.id];
-      html += `<div class="skill-slot" onclick="openSkillPicker(${i})"><div class="s-emoji">${s.emoji}</div><div class="s-name">${s.name}</div><div class="s-lvl">Niv. ${skill.level}/3</div><div class="s-pips">${[1,2,3].map(x=>`<div class="s-pip ${x<=skill.level?'filled':''}"></div>`).join('')}</div></div>`;
-    } else { html += `<div class="skill-slot empty" onclick="openSkillPicker(${i})">➕<br>Compétence</div>`; }
-  }
-  html += `</div></div><div class="food-grid">`;
-  for(const [foodKey,food] of Object.entries(FOODS)){
-    if(food.unlockLevel && st.level<food.unlockLevel) continue;
-    const isFav = foodKey===animal.food; const xpGain = isFav?food.xp*2:food.xp;
-    const disabled = state.coins<food.cost || !canFeed;
-    html += `<button class="food-btn ${isFav?'fav':''}" onclick="feedAnimal('${id}','${foodKey}')" ${disabled?'disabled':''}><div class="food-emoji">${food.emoji}</div><div class="food-name">${food.name}</div><div class="food-xp">+${xpGain} XP</div><div class="food-cost">${food.cost} 🪙</div></button>`;
-  }
-  html += `</div>`;
-  if(st.count > 1){
-    const price = RARITY_SELL[animal.rarity] || 30;
-    html += `<button class="sell-btn" onclick="sellDuplicate('${id}')">💰 Vendre 1 double (+${price} 🪙) · ${st.count} restants</button>`;
-  }
-  html += `</div></div></div>`;
-  document.getElementById('modal-root').innerHTML = html;
-  if(animate) requestAnimationFrame(()=>document.querySelector('.modal-bg').classList.add('open'));
-}
+/* SÉLECTION COMPÉTENCES */
+.skill-picker-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:0 18px 16px}
+.skill-pick-card{background:var(--card2);border:1px solid var(--border-strong);border-radius:12px;padding:10px;text-align:center;cursor:pointer;transition:all .15s}
+.skill-pick-card:active{transform:scale(.96)}
+.skill-pick-card.disabled{opacity:.4;cursor:not-allowed}
+.skill-pick-emoji{font-size:24px;margin-bottom:2px}
+.skill-pick-name{font-size:11px;font-weight:800;color:var(--text)}
+.skill-pick-desc{font-size:9px;color:var(--soft);font-weight:700;margin-top:3px;line-height:1.3}
 
-function closeModal(e){
-  if(e && e.target!==e.currentTarget) return;
-  const bg = document.querySelector('.modal-bg'); if(!bg) return;
-  bg.classList.remove('open');
-  setTimeout(()=>{ document.getElementById('modal-root').innerHTML = ''; currentModalAnimalId = null; render(); },320);
-}
+/* COMBAT */
+#combat-root{position:fixed;inset:0;z-index:150;display:none}
+#combat-root.open{display:block}
+.combat-bg{position:absolute;inset:0;background:linear-gradient(180deg,#050a08,#0f1a12);display:flex;flex-direction:column;padding:calc(14px + var(--safe-top)) 12px calc(14px + var(--safe-bottom))}
+.combat-top{display:flex;justify-content:space-between;margin-bottom:8px;align-items:center;gap:6px}
+.combat-trophy-display{background:rgba(255,215,0,.1);color:var(--gold);padding:4px 8px;border-radius:999px;font-weight:900;font-size:11px;display:flex;align-items:center;gap:3px;border:1px solid rgba(255,215,0,.25);white-space:nowrap}
+.combat-center{display:flex;flex-direction:column;align-items:center;gap:3px}
+.combat-vs-label{font-weight:900;color:#fff;opacity:.6;font-size:10px;letter-spacing:2px}
+.combat-speed-btn{background:var(--card2);border:1px solid var(--border-strong);color:var(--text);padding:2px 6px;border-radius:6px;font-family:inherit;font-size:9px;font-weight:900;cursor:pointer;transition:all .15s}
+.combat-speed-btn.active{background:rgba(243,156,18,.25);border-color:var(--accent);color:var(--accent)}
+.combat-teams{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.team-col{background:rgba(255,255,255,.04);border-radius:12px;padding:8px;border:1px solid var(--border-strong)}
+.team-col-header{font-size:10px;font-weight:800;color:var(--soft);text-align:center;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.team-col.enemy .team-col-header{color:var(--danger)}
+.team-col.mine .team-col-header{color:var(--primary)}
+.combat-animal{display:flex;align-items:center;gap:6px;padding:5px;border-radius:8px;margin-bottom:3px;background:rgba(0,0,0,.3);transition:all .2s;border:1px solid transparent}
+.combat-animal.active{background:rgba(46,204,113,.15);border-color:var(--primary)}
+.combat-animal.dead{opacity:.3;filter:grayscale(1)}
+.combat-animal.attacking{animation:attackShake .3s}
+@keyframes attackShake{0%,100%{transform:translateX(0)}50%{transform:translateX(6px)}}
+.combat-animal-emoji{font-size:20px;line-height:1}
+.combat-animal-info{flex:1;min-width:0}
+.combat-animal-name{font-size:9px;font-weight:800;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.combat-hp{height:4px;background:rgba(0,0,0,.5);border-radius:999px;overflow:hidden;margin-top:2px}
+.combat-hp-fill{height:100%;background:linear-gradient(90deg,#22c55e,#4ade80);border-radius:999px;transition:width .4s}
+.combat-hp-fill.enemy{background:linear-gradient(90deg,#ef4444,#f97316)}
+.combat-hp-text{font-size:7px;color:rgba(255,255,255,.55);font-weight:700;margin-top:1px}
+.combat-log{background:rgba(0,0,0,.5);border-radius:10px;padding:8px;flex:1;overflow-y:auto;font-size:11px;color:rgba(255,255,255,.9);line-height:1.5;margin-bottom:8px;min-height:70px;max-height:140px;border:1px solid var(--border)}
+.combat-log div{margin-bottom:2px}
+.combat-log .dmg{color:var(--danger);font-weight:900}
+.combat-log .spec{color:var(--purple);font-weight:900}
+.combat-log .win{color:var(--primary);font-weight:900;font-size:12px}
+.combat-log .lose{color:var(--danger);font-weight:900;font-size:12px}
+.combat-log .elem{font-weight:900}
+.combat-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px}
+.combat-action-btn{padding:11px 6px;background:var(--card2);border:1px solid var(--border-strong);color:var(--text);border-radius:10px;font-family:inherit;font-weight:800;font-size:12px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;transition:all .15s}
+.combat-action-btn:active:not(:disabled){transform:scale(.96)}
+.combat-action-btn:disabled{opacity:.35;cursor:not-allowed}
+.combat-action-btn.attack{background:linear-gradient(135deg,#c0392b,#e74c3c);border-color:#e74c3c;color:#fff}
+.combat-action-btn.special{background:linear-gradient(135deg,#8e44ad,#b579d4);border-color:#b579d4;color:#fff}
+.combat-action-btn.defend{background:linear-gradient(135deg,#2874a6,#3498db);border-color:#3498db;color:#fff}
+.combat-action-btn small{font-size:8px;opacity:.8;font-weight:700}
+.combat-waiting-msg{text-align:center;color:var(--accent);font-weight:800;font-size:12px;margin-bottom:6px;animation:pulseWait 1.2s infinite}
+@keyframes pulseWait{0%,100%{opacity:.6}50%{opacity:1}}
+.combat-auto-toggle{width:100%;padding:8px;background:var(--card2);border:1px solid var(--border-strong);color:var(--soft);border-radius:10px;font-family:inherit;font-size:11px;font-weight:800;cursor:pointer;margin-bottom:6px;transition:all .15s}
+.combat-auto-toggle.active{background:rgba(243,156,18,.15);border-color:var(--accent);color:var(--accent)}
+.combat-close{display:none;width:100%;padding:11px;background:linear-gradient(135deg,var(--primary),#22c55e);color:#0a1512;border:none;border-radius:10px;font-weight:900;font-family:inherit;font-size:13px;cursor:pointer}
+.combat-close.show{display:block}
 
-function feedAnimal(id, foodKey){
-  const animal = ANIMAL_MAP[id]; const st = state.animals[id]; const food = FOODS[foodKey];
-  if(!animal || !st) return;
-  const cap = zooCap();
-  if(st.level>=MAX_ANIMAL_LEVEL) return showToast('Niveau maximum !','warn');
-  if(st.level>=cap) return showToast('⛔ Améliore ton zoo !','warn');
-  if(state.coins<food.cost) return showToast('Pas assez de pièces !','warn');
-  state.coins -= food.cost;
-  const isFav = foodKey===animal.food; const xpGain = isFav?food.xp*2:food.xp;
-  st.xp += xpGain; state.stats.totalFeeds++;
-  let leveledUp = false; const prevStage = getEvolutionStage(st.level);
-  while(st.level<cap && st.level<MAX_ANIMAL_LEVEL && st.xp>=xpForLevel(st.level)){ st.xp -= xpForLevel(st.level); st.level++; leveledUp = true; }
-  if(st.level>=cap || st.level>=MAX_ANIMAL_LEVEL) st.xp = 0;
-  const newStage = getEvolutionStage(st.level);
-  document.getElementById('coins').textContent = formatNum(state.coins);
-  checkZoneUnlocks(); save(); renderAnimalModal(false);
-  requestAnimationFrame(()=>{ const emoji = document.getElementById('hero-emoji'); if(emoji){ emoji.classList.remove('bounce'); void emoji.offsetWidth; emoji.classList.add('bounce'); } });
-  if(newStage > prevStage){ playUpgrade(); showToast(`✨ ${animal.name} ÉVOLUE ! Stage ${newStage}`, 'evolve'); }
-  else if(leveledUp){ playLevelUp(); showToast(`⬆️ ${animal.name} → niv. ${st.level} !`,'success'); }
-  else playFeed();
-}
+/* OVERLAY RÉSULTAT COMBAT */
+.combat-result-overlay{position:fixed;inset:0;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;animation:resultFadeIn 0.3s ease}
+@keyframes resultFadeIn{from{opacity:0}to{opacity:1}}
+.result-content{background:#152118;border-radius:24px;padding:28px 24px;max-width:340px;width:100%;text-align:center;border:2px solid;box-shadow:0 20px 60px rgba(0,0,0,.6);animation:resultPopIn 0.4s cubic-bezier(.34,1.56,.64,1)}
+.result-content.win{border-color:#2ecc71;box-shadow:0 0 60px rgba(46,204,113,.4)}
+.result-content.lose{border-color:#e74c3c;box-shadow:0 0 60px rgba(231,76,60,.4)}
+@keyframes resultPopIn{0%{transform:scale(.6);opacity:0}70%{transform:scale(1.06)}100%{transform:scale(1);opacity:1}}
+.result-emoji{font-size:64px;margin-bottom:8px;animation:resultEmoji 0.7s ease}
+@keyframes resultEmoji{0%{transform:scale(0) rotate(-180deg)}70%{transform:scale(1.2) rotate(10deg)}100%{transform:scale(1) rotate(0)}}
+.result-title{font-size:32px;font-weight:900;letter-spacing:1.5px;margin-bottom:16px}
+.result-title.win{color:#2ecc71;text-shadow:0 0 24px rgba(46,204,113,.7)}
+.result-title.lose{color:#e74c3c;text-shadow:0 0 24px rgba(231,76,60,.7)}
+.result-trophy{font-size:34px;font-weight:900;margin:0 0 16px;padding:14px;border-radius:14px;background:rgba(0,0,0,.35)}
+.result-trophy.positive{color:#2ecc71}
+.result-trophy.negative{color:#e74c3c}
+.result-rewards{display:flex;flex-direction:column;gap:8px;margin-bottom:18px;padding:14px;background:rgba(0,0,0,.3);border-radius:12px;border:1px solid #2a3a2e}
+.result-reward-row{display:flex;justify-content:space-between;font-size:14px;font-weight:800;align-items:center}
+.result-reward-row span:first-child{color:#8fa89a}
+.result-reward-row span:last-child{color:#ffd700;font-size:15px}
+.result-btn{width:100%;padding:14px;background:#2ecc71;color:#0a1512;border:none;border-radius:12px;font-weight:900;font-family:inherit;font-size:15px;cursor:pointer}
+.result-btn:active{transform:scale(.96)}
 
-function unlockSpecial(id){
-  const animal = ANIMAL_MAP[id]; const st = state.animals[id];
-  const cost = animal.special.gemCost;
-  if(state.gems<cost) return showToast('Pas assez de gemmes !','warn');
-  state.gems -= cost; st.specialLvl = 1;
-  save(); renderAnimalModal(false); render(); playUpgrade(); showToast(`⭐ ${animal.special.name} débloquée !`,'evolve');
-}
-function upgradeSpecial(id){
-  const animal = ANIMAL_MAP[id]; const st = state.animals[id];
-  if(st.specialLvl>=5) return;
-  const cost = animal.special.gemCost*(st.specialLvl+1);
-  if(state.gems<cost) return showToast('Pas assez de gemmes !','warn');
-  state.gems -= cost; st.specialLvl++;
-  save(); renderAnimalModal(false); render(); playUpgrade(); showToast(`⭐ ${animal.special.name} → niv. ${st.specialLvl}`,'evolve');
-}
-
-function sellDuplicate(id){
-  const st = state.animals[id]; const animal = ANIMAL_MAP[id];
-  if(!st || st.count <= 1) return showToast('Impossible de vendre le dernier !','warn');
-  const price = RARITY_SELL[animal.rarity] || 30;
-  st.count--; state.coins += price; state.stats.dupesSold++;
-  save(); playBuy(); renderAnimalModal(false); render();
-  showToast(`💰 +${price} 🪙 · ${st.count} restants`,'success');
-}
-
-function openSkillPicker(slot){
-  const id = currentModalAnimalId; const animal = ANIMAL_MAP[id]; const st = state.animals[id];
-  if(!animal || !st) return;
-  const current = st.skills[slot];
-  let html = `<div class="modal-bg" onclick="closeModal(event)"><div class="modal-sheet" onclick="event.stopPropagation()"><div class="modal-handle"></div><div style="padding:16px 18px 8px"><div style="font-size:16px;font-weight:900">Compétence ${slot+1}</div><div style="font-size:11px;color:var(--soft);font-weight:700;margin-top:4px">${current?`Actuelle : ${SKILLS[current.id].name} niv. ${current.level}`:'Choisis une compétence'}</div></div><div class="skill-picker-grid">`;
-  for(const [skId, sk] of Object.entries(SKILLS)){
-    const isAlreadyUsed = st.skills.some((s,i)=>s && i!==slot && s.id === skId);
-    const canAfford = state.gems >= 15; const disabled = isAlreadyUsed || !canAfford;
-    html += `<div class="skill-pick-card ${disabled?'disabled':''}" onclick="${disabled?'':`equipSkill('${slot}','${skId}')`}"><div class="skill-pick-emoji">${sk.emoji}</div><div class="skill-pick-name">${sk.name}</div><div class="skill-pick-desc">${sk.desc}</div><div style="font-size:9px;color:var(--accent);font-weight:800;margin-top:3px">${isAlreadyUsed?'Déjà équipée':'15 💎'}</div></div>`;
-  }
-  html += `</div>`;
-  if(current){
-    const upgradeCost = current.level === 1 ? 20 : (current.level === 2 ? 40 : 0);
-    if(upgradeCost > 0){ html += `<div style="padding:0 18px 8px"><button class="special-btn" ${state.gems<upgradeCost?'disabled':''} onclick="upgradeSkill('${slot}')">Améliorer niv. ${current.level+1} · ${upgradeCost} 💎</button></div>`; } 
-    else { html += `<div style="padding:0 18px 8px;text-align:center;font-size:11px;color:var(--primary);font-weight:800">✨ Niveau max (3/3)</div>`; }
-    html += `<div style="padding:0 18px 16px"><button class="sell-btn" style="background:linear-gradient(135deg,#5a3a1e,#8a5a2e)" onclick="unequipSkill(${slot})">❌ Retirer (gratuit)</button></div>`;
-  }
-  html += `</div></div>`;
-  const root = document.getElementById('modal-root'); root.innerHTML = html;
-  requestAnimationFrame(()=>root.querySelector('.modal-bg').classList.add('open'));
-}
-
-function equipSkill(slot, skillId){
-  const id = currentModalAnimalId; const st = state.animals[id];
-  if(!st) return;
-  const current = st.skills[slot]; const cost = current ? 0 : 15;
-  if(state.gems < cost) return showToast('Pas assez de gemmes !','warn');
-  state.gems -= cost; st.skills[slot] = { id: skillId, level: 1 };
-  save(); playUpgrade(); closeModal(); setTimeout(()=>{ openAnimal(id); }, 350); render();
-  showToast(`🎯 ${SKILLS[skillId].name} équipée !`,'success');
-}
-function upgradeSkill(slot){
-  const id = currentModalAnimalId; const st = state.animals[id];
-  if(!st) return;
-  const current = st.skills[slot];
-  if(!current || current.level >= 3) return;
-  const cost = current.level === 1 ? 20 : 40;
-  if(state.gems < cost) return showToast('Pas assez de gemmes !','warn');
-  state.gems -= cost; current.level++;
-  save(); playUpgrade(); closeModal(); setTimeout(()=>{ openAnimal(id); }, 350); render();
-  showToast(`🎯 ${SKILLS[current.id].name} → niv. ${current.level}`,'evolve');
-}
-function unequipSkill(slot){
-  const id = currentModalAnimalId; const st = state.animals[id];
-  if(!st) return;
-  st.skills[slot] = null; save(); playClick(); closeModal(); setTimeout(()=>{ openAnimal(id); }, 350); render();
-}
-
-function buyEgg(eggKey, count){
-  const egg = EGG_DEFS[eggKey]; if(!egg) return;
-  const totalCost = egg.cost * count;
-  
-  if(state.coins < totalCost) return showToast('Pas assez de pièces !','warn');
-  
-  if (count > 1) {
-    const msg = `Confirmer l'achat de ${count} œufs pour ${formatNum(totalCost)} 🪙 ?`;
-    if (!confirm(msg)) return;
-  }
-
-  state.coins -= totalCost; 
-  const results = [];
-  
-  for(let i=0; i<count; i++){ 
-    results.push(drawOneEgg(egg)); 
-  }
-  
-  state.stats.eggsOpened += count; 
-  save(); 
-  playEgg();
-  if(results.some(r=>r.isShiny)) playShiny();
-  showEggResults(results); 
-  render();
-}
-
-function drawOneEgg(egg){
-  const rand = Math.random()*100; let accum = 0; let chosenRarity = 'commun';
-  for(const [rarity, pct] of Object.entries(egg.pools)){ accum += pct; if(rand < accum){ chosenRarity = rarity; break; } }
-  const pool = ANIMALS.filter(a=>a.rarity===chosenRarity);
-  const animal = pool[Math.floor(Math.random()*pool.length)];
-  if(!animal) return null;
-  const isShiny = Math.random() < SHINY_RATE;
-  const existing = state.animals[animal.id];
-  if(existing && existing.owned){
-    existing.count = (existing.count || 1) + 1;
-    if(isShiny && !existing.hasShiny){ existing.hasShiny = true; state.stats.shinyFound++; }
-    return {animal, isShiny, isNew:false, count:existing.count};
-  } else {
-    state.animals[animal.id] = {level:1,xp:0,specialLvl:0,owned:true,count:1,hasShiny:isShiny,skills:[null,null]};
-    if(isShiny) state.stats.shinyFound++;
-    return {animal, isShiny, isNew:true, count:1};
-  }
-}
-
-function showEggResults(results){
-  const validResults = results.filter(r=>r); if(validResults.length === 0) return;
-  let title, content;
-  if(validResults.length === 1){
-    const r = validResults[0]; const rarity = RARITIES[r.animal.rarity]; const elemInfo = ELEMENTS[getElementOf(r.animal.id)];
-    content = `<div style="font-size:80px;line-height:1;filter:drop-shadow(0 0 20px ${r.isShiny?'#ffd700':'transparent'})">${r.animal.emoji}${r.isShiny?'✨':''}</div><div style="font-size:22px;font-weight:900;margin:12px 0 4px">${r.animal.name}${r.isShiny?' SHINY':''}</div><div class="hero-badges" style="justify-content:center;margin-bottom:12px"><span class="badge" style="background:${rarity.color}">${rarity.name}</span><span class="badge" style="background:${elemInfo.color}">${elemInfo.emoji} ${elemInfo.name}</span></div><div style="font-size:12px;color:var(--soft);font-weight:700">${r.isNew?'🎉 Nouvel animal !':'📦 Doublon · ×'+r.count}</div>`;
-  } else {
-    content = `<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;padding:8px">${validResults.map(r=>`<div style="text-align:center"><div style="font-size:36px;${r.isShiny?'filter:drop-shadow(0 0 8px #ffd700)':''}">${r.animal.emoji}${r.isShiny?'✨':''}</div><div style="font-size:9px;font-weight:800;margin-top:2px">${r.animal.name}</div>${r.isNew?'<div style="font-size:8px;color:var(--primary);font-weight:900">NEW</div>':''}</div>`).join('')}</div>`;
-  }
-  const shinyCount = validResults.filter(r=>r.isShiny).length;
-  document.getElementById('modal-root').innerHTML = `<div class="modal-bg open" onclick="this.remove();render();"><div class="modal-sheet" onclick="event.stopPropagation()" style="text-align:center"><div class="modal-handle"></div><div style="padding:30px 20px 0"><div style="font-size:22px;font-weight:900;margin-bottom:12px">${shinyCount>0?'✨ SHINY !':(validResults.length>1?'📦 Résultats':'✨ Nouvel animal !')}</div>${content}<button style="width:100%;padding:14px;background:linear-gradient(135deg,var(--primary),#4ade80);color:#0a1512;border:none;border-radius:12px;font-weight:900;font-family:inherit;font-size:14px;cursor:pointer;margin:20px 0" onclick="this.closest('.modal-bg').remove();render();">Continuer</button></div></div></div>`;
-  if(shinyCount > 0) showToast(`✨ ${shinyCount} shiny${shinyCount>1?'s':''} trouvé${shinyCount>1?'s':''} !`,'evolve');
-  else if(validResults.length === 1 && validResults[0].isNew) showToast(`🎉 ${validResults[0].animal.name} rejoint ton zoo !`,'success');
-}
-function buyCoins(){ if(state.gems<5) return; state.gems-=5; state.coins+=500; save(); render(); playBuy(); showToast('+500 🪙','success'); }
-function buyGems(){ if(state.coins<5000) return; state.coins-=5000; state.gems+=5; save(); render(); playBuy(); showToast('+5 💎','success'); }
-
-function showToast(msg, type){
-  type = type||'info'; const root = document.getElementById('toast-root'); const t = document.createElement('div');
-  t.className = 'toast toast-'+type; t.textContent = msg; root.appendChild(t);
-  requestAnimationFrame(()=>t.classList.add('show'));
-  setTimeout(()=>{ t.classList.remove('show'); setTimeout(()=>t.remove(),300); },2400);
-}
+/* NOTIFICATIONS (TOASTS) */
+#toast-root{position:fixed;top:calc(80px + var(--safe-top));left:50%;transform:translateX(-50%);z-index:200;width:calc(100% - 32px);max-width:400px;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.toast{padding:10px 14px;border-radius:12px;font-weight:800;font-size:12px;text-align:center;color:#fff;box-shadow:var(--shadow-lg);opacity:0;transform:translateY(-10px);transition:all .3s}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.success{background:linear-gradient(135deg,var(--primary),var(--primary-dark))}
+.toast.warn{background:linear-gradient(135deg,var(--accent),#e67e22)}
+.toast.evolve{background:linear-gradient(135deg,var(--purple),#8e44ad)}
+.toast.info{background:linear-gradient(135deg,#3498db,#2980b9)}
+.toast.error{background:linear-gradient(135deg,var(--danger),#c0392b)}
