@@ -69,6 +69,51 @@ function startArena(){
   renderCombat(); setTimeout(()=>combatStep(), 400);
 }
 
+function startBossFight(chapIndex, type, sbireIndex = 0){
+  if(state.arenaTeam.length !== 3) return;
+  const chapter = BOSS_CHAPTERS[chapIndex];
+  if(!chapter) return;
+  combatSpeed = 1;
+  
+  const playerTeam = state.arenaTeam.map(id=>{
+    const st = state.animals[id];
+    return { animal: ANIMAL_MAP[id], level: st.level, specialLvl: st.specialLvl, skills: st.skills.map(s=>s?{...s}:null), hp: 0, maxHp: 0, specialUsed: false, defending: false };
+  });
+  playerTeam.forEach(p=>{ const stats = getCombatStats(p); p.hp = stats.hp; p.maxHp = stats.hp; });
+
+  let enemyName, enemyEmoji, enemyLvl, enemyHpMult, enemyAtkMult, rewards;
+
+  if(type === 'sbire'){
+    const sbire = chapter.sbires[sbireIndex];
+    enemyName = sbire.name; enemyEmoji = sbire.emoji; enemyLvl = sbire.lvl; 
+    enemyHpMult = sbire.hpMult; enemyAtkMult = sbire.atkMult;
+    rewards = { trophy: 10, coins: sbire.rewardCoins, gems: sbire.rewardGems }; 
+  } else {
+    enemyName = chapter.bossName; enemyEmoji = chapter.bossEmoji; enemyLvl = chapter.boss.lvl;
+    enemyHpMult = chapter.boss.hpMult; enemyAtkMult = chapter.boss.atkMult;
+    rewards = { trophy: chapter.boss.trophy, coins: chapter.boss.coins, gems: chapter.boss.gems }; 
+  }
+
+  const bossAnimal = { id: 'boss_'+chapIndex, name: enemyName, emoji: enemyEmoji, baseAtk: 15, baseHp: 200, baseDef: 10, special:{name:'Fureur', effect:'power'}, rarity:'mythique' };
+  const e = { animal: bossAnimal, level: enemyLvl, specialLvl: type==='boss'?3:1, skills: [null,null], hp: 0, maxHp: 0, specialUsed: false, defending: false };
+  const stats = getCombatStats(e); 
+  e.hp = Math.round(stats.hp * enemyHpMult); 
+  e.maxHp = e.hp;
+  e.animal.baseAtk = Math.round(stats.atk * enemyAtkMult);
+
+  combat = { 
+    player: playerTeam, enemy: [e], 
+    oppName: enemyName, oppTrophy: state.trophies + rewards.trophy, 
+    log: [`⚔️ ${enemyEmoji} ${enemyName} apparaît !`], 
+    over: false, win: false, playerIdx: 0, enemyIdx: 0, 
+    autoMode: false, waitingForPlayer: false, turnCount: 0,
+    isBoss: true, bossRewards: rewards, bossChapter: chapIndex, bossType: type, bossSbireIndex: sbireIndex
+  };
+  
+  renderCombat(); 
+  setTimeout(()=>combatStep(), 400);
+}
+
 function renderCombat(){
   const root = document.getElementById('combat-root'); root.classList.add('open');
   const c = combat;
@@ -80,7 +125,7 @@ function renderCombat(){
     </div>
     <div class="combat-teams">
       <div class="team-col mine"><div class="team-col-header">Ton équipe</div>${c.player.map((a,i)=>{const e=ELEMENTS[getElementOf(a.animal.id)];return `<div class="combat-animal ${i===c.playerIdx?'active':''}" id="pa-${i}"><div class="combat-animal-emoji">${a.animal.emoji}</div><div class="combat-animal-info"><div class="combat-animal-name">${e.emoji} ${a.animal.name}</div><div class="combat-hp"><div class="combat-hp-fill" id="pa-hp-${i}" style="width:100%"></div></div><div class="combat-hp-text" id="pa-ht-${i}">${a.maxHp}/${a.maxHp}</div></div></div>`}).join('')}</div>
-      <div class="team-col enemy"><div class="team-col-header">${c.oppName}</div>${c.enemy.map((a,i)=>{const e=ELEMENTS[getElementOf(a.animal.id)];return `<div class="combat-animal ${i===c.enemyIdx?'active':''}" id="ea-${i}"><div class="combat-animal-emoji">${a.animal.emoji}</div><div class="combat-animal-info"><div class="combat-animal-name">${e.emoji} ${a.animal.name}</div><div class="combat-hp"><div class="combat-hp-fill enemy" id="ea-hp-${i}" style="width:100%"></div></div><div class="combat-hp-text" id="ea-ht-${i}">${a.maxHp}/${a.maxHp}</div></div></div>`}).join('')}</div>
+      <div class="team-col enemy"><div class="team-col-header">${c.oppName}</div>${c.enemy.map((a,i)=>{const e=ELEMENTS[getElementOf(a.animal.id)]||ELEMENTS['ombre'];return `<div class="combat-animal ${i===c.enemyIdx?'active':''}" id="ea-${i}"><div class="combat-animal-emoji">${a.animal.emoji}</div><div class="combat-animal-info"><div class="combat-animal-name">${e.emoji} ${a.animal.name}</div><div class="combat-hp"><div class="combat-hp-fill enemy" id="ea-hp-${i}" style="width:100%"></div></div><div class="combat-hp-text" id="ea-ht-${i}">${a.maxHp}/${a.maxHp}</div></div></div>`}).join('')}</div>
     </div>
     <div class="combat-log" id="combat-log"></div>
     <button class="combat-auto-toggle ${c.autoMode?'active':''}" id="auto-toggle" onclick="toggleAutoMode()">${c.autoMode?'⏸️ Mode auto · cliquer pour reprendre la main':'▶️ Mode manuel · cliquer pour automatiser'}</button>
@@ -264,6 +309,60 @@ function endCombat(win){
   if(!combat || combat.over) return;
   combat.over = true; combat.win = win;
   const c = combat;
+
+  // --- GESTION DE LA VICTOIRE CONTRE UN SBIRES / BOSS ---
+  if(c.isBoss){
+    const rewards = c.bossRewards;
+    if(win){
+      state.coins += rewards.coins;
+      state.gems += rewards.gems;
+      state.trophies += rewards.trophy;
+      
+      if(c.bossType === 'sbire'){
+        if(state.bossProgress[c.bossChapter] === c.bossSbireIndex){
+          state.bossProgress[c.bossChapter]++;
+        }
+      } else if(c.bossType === 'boss'){
+        // NOUVEAU : Enregistrer les animaux qui ont battu le boss
+        if(!state.bossVeterans[c.bossChapter]) state.bossVeterans[c.bossChapter] = [];
+        c.player.forEach(p => {
+          if(!state.bossVeterans[c.bossChapter].includes(p.animal.id)) {
+            state.bossVeterans[c.bossChapter].push(p.animal.id);
+          }
+        });
+      }
+      
+      c.log.push(`<span class="win">🏆 VAINCU ! +${rewards.coins} 🪙 · +${rewards.gems} 💎 · +${rewards.trophy} 🏆</span>`);
+      playWin();
+    } else {
+      c.log.push(`<span class="lose">💀 Vous avez été vaincu...</span>`);
+      playLose();
+    }
+    save(); render();
+    c.resultData = { win, trophyChange: win ? rewards.trophy : 0, coinsEarned: win ? rewards.coins : 0, gemsEarned: win ? rewards.gems : 0 };
+    updateCombatHP(); updateCombatLog();
+    const autoBtn = document.getElementById('auto-toggle'); if(autoBtn) autoBtn.style.display = 'none';
+    const area = document.getElementById('combat-action-area'); if(area) area.innerHTML = '';
+    render(); setTimeout(showCombatResult, 500);
+    return; 
+  }
+
+  // GAIN D'XP EN COMBAT (Arène normale)
+  c.player.forEach(p => {
+    const st = state.animals[p.animal.id];
+    if(st) {
+      const xpGain = win ? 40 : 15; // 40 XP si victoire, 15 si défaite
+      st.xp += xpGain;
+      let leveledUp = false;
+      while(st.xp >= xpForLevel(st.level) && st.level < MAX_ANIMAL_LEVEL) {
+        st.xp -= xpForLevel(st.level);
+        st.level++;
+        leveledUp = true;
+      }
+      if(leveledUp) showToast(`⭐ ${p.animal.name} a gagné un niveau en combat !`, 'evolve');
+    }
+  });
+
   const playerHpLeft = c.player.reduce((s,a)=>s+Math.max(0,a.hp),0);
   const enemyHpLeft = c.enemy.reduce((s,a)=>s+Math.max(0,a.hp),0);
   const totalPlayerHp = c.player.reduce((s,a)=>s+a.maxHp,0);
@@ -307,7 +406,7 @@ function showCombatResult(){
   if(!rewardsHtml) rewardsHtml = `<div class="result-reward-row"><span>Aucune récompense</span><span>—</span></div>`;
   const trophyText = trophyChange > 0 ? '+'+trophyChange : String(trophyChange);
   const trophyClass = trophyChange > 0 ? 'positive' : 'negative';
-  const titleClass = win ? 'win' : 'lose'; const title = win ? 'VICTOIRE' : 'DÉFAITE'; const emoji = win ? '🏆' : '💔';
+  const titleClass = win ? 'win' : 'lose'; const title = win ? (c.isBoss ? 'BOSS VAINCU' : 'VICTOIRE') : 'DÉFAITE'; const emoji = win ? '🏆' : '💔';
   const overlay = document.createElement('div'); overlay.className = 'combat-result-overlay';
   overlay.innerHTML = `<div class="result-content ${titleClass}">
     <div class="result-emoji">${emoji}</div>
