@@ -1,5 +1,5 @@
 const RARITIES = { commun:{name:'Commun',color:'#95a5a6',dropPct:60}, rare:{name:'Rare',color:'#3498db',dropPct:25}, epique:{name:'Épique',color:'#9b59b6',dropPct:12}, legendaire:{name:'Légendaire',color:'#f39c12',dropPct:2.5}, mythique:{name:'Mythique',color:'#e74c3c',dropPct:0.5} };
-const RARITY_SELL = { commun:30, rare:80, epique:200, legendaire:500, mythique:1500 };
+const RARITY_SELL = { commun:60, rare:150, epique:400, legendaire:1000, mythique:3000 };
 const FOODS = { fruits:{name:'Fruits',emoji:'🍎',cost:25,xp:18}, insectes:{name:'Insectes',emoji:'🐛',cost:25,xp:18}, poissons:{name:'Poissons',emoji:'🐟',cost:25,xp:18}, plantes:{name:'Plantes',emoji:'🌿',cost:25,xp:18}, recette:{name:'Recette',emoji:'🍲',cost:120,xp:140,unlockLevel:10} };
 const ZONES = {
   foret:{name:'Forêt',emoji:'🌲',color:'#2ecc71'},
@@ -169,4 +169,57 @@ const EGG_DEFS = {
   epique:{cost:10000,pools:{epique:65,legendaire:30,mythique:5}},
   legendaire:{cost:50000,pools:{legendaire:70,mythique:30}}
 };
-const SHINY_RATE = 0.01;
+const SHINY_RATE = 0.05; // 5% de chance d'avoir un shiny
+
+// ==========================================
+// LES BOSS DU JEU
+// ==========================================
+// ==========================================
+// LES SBIRES & BOSS DU JEU
+// ==========================================
+const BOSS_CHAPTERS = [
+  {
+    zone: 'foret', name: 'Chapitre 1 : Le Grand Chêne', bossEmoji: '🌳', bossName: 'Le Grand Chêne',
+    sbires: [
+      { name: 'Louveteau', emoji: '🐺', lvl: 5, hpMult: 1.5, atkMult: 1.0, rewardCoins: 500, rewardGems: 1 },
+      { name: 'Garde Forestier', emoji: '🏹', lvl: 8, hpMult: 1.8, atkMult: 1.1, rewardCoins: 700, rewardGems: 1 },
+      { name: 'Araignée Géante', emoji: '🕷️', lvl: 10, hpMult: 2.0, atkMult: 1.2, rewardCoins: 900, rewardGems: 1 },
+      { name: 'Sanglier Alpha', emoji: '🐗', lvl: 12, hpMult: 2.2, atkMult: 1.3, rewardCoins: 1200, rewardGems: 1 },
+      { name: 'Esprit de la Forêt', emoji: '🧚', lvl: 14, hpMult: 2.5, atkMult: 1.4, rewardCoins: 1500, rewardGems: 1 }
+    ],
+    boss: { lvl: 15, hpMult: 3.0, atkMult: 1.5, trophy: 30, coins: 3000, gems: 10 }
+  },
+  {
+    zone: 'ocean', name: 'Chapitre 2 : Léviathan', bossEmoji: '🐋', bossName: 'Léviathan',
+    sbires: [
+      { name: 'Piranha', emoji: '🐟', lvl: 15, hpMult: 1.5, atkMult: 1.1, rewardCoins: 1000, rewardGems: 1 },
+      { name: 'Sirène Noire', emoji: '🧜‍♀️', lvl: 20, hpMult: 2.0, atkMult: 1.2, rewardCoins: 1500, rewardGems: 1 },
+      { name: 'Crabe Blindé', emoji: '🦀', lvl: 24, hpMult: 2.2, atkMult: 1.3, rewardCoins: 2000, rewardGems: 1 },
+      { name: 'Kraken Juvénile', emoji: '🦑', lvl: 28, hpMult: 2.5, atkMult: 1.4, rewardCoins: 2500, rewardGems: 1 },
+      { name: 'Gardien des Abysses', emoji: '🛡️', lvl: 32, hpMult: 2.8, atkMult: 1.5, rewardCoins: 3000, rewardGems: 1 }
+    ],
+    boss: { lvl: 35, hpMult: 3.5, atkMult: 1.8, trophy: 60, coins: 10000, gems: 25 }
+  },
+  {
+    zone: 'montagne', name: 'Chapitre 3 : Le Colosse', bossEmoji: '🗿', bossName: 'Le Colosse',
+    sbires: [
+      { name: 'Chèvre des Neiges', emoji: '🐐', lvl: 36, hpMult: 1.5, atkMult: 1.2, rewardCoins: 3000, rewardGems: 1 },
+      { name: 'Aigle des Cimes', emoji: '🦅', lvl: 40, hpMult: 2.0, atkMult: 1.3, rewardCoins: 4000, rewardGems: 1 },
+      { name: 'Yéti Sauvage', emoji: '❄️', lvl: 44, hpMult: 2.5, atkMult: 1.4, rewardCoins: 5000, rewardGems: 1 },
+      { name: 'Golem de Pierre', emoji: '🪨', lvl: 48, hpMult: 3.0, atkMult: 1.5, rewardCoins: 6000, rewardGems: 1 },
+      { name: 'Bouquetin Démon', emoji: '🐏', lvl: 52, hpMult: 3.2, atkMult: 1.6, rewardCoins: 8000, rewardGems: 1 }
+    ],
+    boss: { lvl: 55, hpMult: 4.0, atkMult: 2.0, trophy: 100, coins: 30000, gems: 50 }
+  },
+  {
+    zone: 'legendaire', name: 'Chapitre 4 : L\'Ombre', bossEmoji: '👤', bossName: 'L\'Ombre de Kinkajou',
+    sbires: [
+      { name: 'Ombres Mineures', emoji: '🌑', lvl: 50, hpMult: 2.0, atkMult: 1.5, rewardCoins: 5000, rewardGems: 1 },
+      { name: 'Chevalier Noir', emoji: '⚔️', lvl: 55, hpMult: 2.5, atkMult: 1.8, rewardCoins: 7000, rewardGems: 1 },
+      { name: 'Dragon Zombie', emoji: '🐲', lvl: 60, hpMult: 3.0, atkMult: 2.0, rewardCoins: 10000, rewardGems: 1 },
+      { name: 'Ange Déchu', emoji: '🪶', lvl: 65, hpMult: 3.5, atkMult: 2.2, rewardCoins: 15000, rewardGems: 1 },
+      { name: 'Écho du Néant', emoji: '🌀', lvl: 70, hpMult: 4.0, atkMult: 2.5, rewardCoins: 20000, rewardGems: 1 }
+    ],
+    boss: { lvl: 80, hpMult: 5.0, atkMult: 3.0, trophy: 200, coins: 100000, gems: 100 }
+  }
+];
