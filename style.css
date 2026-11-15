@@ -18,14 +18,15 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
 /* ONGLETS (COLLÉS EN BAS ET TRÈS GROS) */
 #tabs{
   position:absolute;
-  bottom:0; /* Collé tout en bas, pas d'espace */
+  bottom:0;
+  margin-bottom:35px; /* Remet l'espace pour passer au-dessus du logo Netlify */
   left:0;
   right:0;
   display:flex;
   background:#0a1512;
   border-top:1px solid var(--border);
   border-radius:16px 16px 0 0;
-  padding:12px 4px calc(8px + var(--safe-bottom)); /* Un peu plus haut pour tout faire tenir */
+  padding:10px 4px;
   gap:2px;
   box-shadow:0 -4px 20px rgba(0,0,0,.8);
   z-index:20;
@@ -33,21 +34,21 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
 #tabs button{
   flex:1;
   display:flex;
-  flex-direction:column;
+  flex-direction:column-reverse; /* Inverse l'ordre : Texte en haut, Emoji en bas */
   align-items:center;
   gap:4px;
   padding:8px 2px;
   border:none;
   background:transparent;
   border-radius:10px;
-  font-size:28px; /* Icônes GÉANTES (le logo Netlify ne gênera plus) */
+  font-size:26px; /* Taille de l'emoji */
   cursor:pointer;
   transition:all .2s;
   color:var(--soft);
   font-family:inherit;
 }
 #tabs button span{
-  font-size:12px; /* Texte bien lisible */
+  font-size:11px;
   font-weight:800;
 }
 #tabs button.active{
