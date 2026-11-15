@@ -84,12 +84,21 @@ function renderArena(c){
   }
   const league = getLeague(state.trophies); const myRank = calculateRank(state.trophies);
   const myPower = state.arenaTeam.reduce((s,id)=>s+animalPower(ANIMAL_MAP[id],state.animals[id].level),0);
+  
   let html = `<div class="arena-card"><div class="arena-header"><div class="league-big" style="color:${league.color}">${league.icon} ${league.name}</div><div class="league-sub">${state.trophies} 🏆 · Classement #${myRank}</div></div><div style="text-align:center;font-size:11px;color:var(--soft);font-weight:700;margin-bottom:10px">Puissance : ${formatNum(myPower)}</div><div class="section-title" style="margin:0 0 8px">Ton équipe</div><div class="team-picker">`;
+  
   for(let i=0;i<3;i++){
     const id = state.arenaTeam[i];
     if(id && state.animals[id]){
       const animal = ANIMAL_MAP[id]; const st = state.animals[id]; const elemInfo = ELEMENTS[getElementOf(id)];
-      html += `<div class="team-slot filled" onclick="openTeamPicker(${i})"><div class="team-slot-emoji">${animal.emoji}${st.hasShiny?'✨':''}</div><div class="team-slot-name">${animal.name} ${elemInfo.emoji}</div><div class="team-slot-lvl">Niv. ${st.level}</div></div>`;
+      const veterans = state.bossVeterans[0] || [];
+      const isVeteran = veterans.includes(id);
+      
+      html += `<div class="team-slot filled" onclick="openTeamPicker(${i})">
+        <div class="team-slot-emoji">${animal.emoji}${st.hasShiny?'✨':''}${isVeteran ? '👑' : ''}</div>
+        <div class="team-slot-name">${animal.name} ${elemInfo.emoji}</div>
+        <div class="team-slot-lvl">Niv. ${st.level}</div>
+      </div>`;
     } else {
       html += `<div class="team-slot" onclick="openTeamPicker(${i})"><div class="team-slot-emoji">➕</div><div class="team-slot-name">Ajouter</div></div>`;
     }
@@ -97,6 +106,66 @@ function renderArena(c){
   html += `</div>`;
   const canFight = state.arenaTeam.length===3 && !combat;
   html += `<button class="arena-btn" ${canFight?'':'disabled'} onclick="startArena()">⚔️ TROUVER UN ADVERSAIRE</button></div>`;
+
+  // --- AFFICHAGE DES CHAPITRES (SBIRES & BOSS) ---
+  const chapIndex = 0; // Chapitre 1 : Forêt
+  const chapter = BOSS_CHAPTERS[chapIndex];
+  const progress = state.bossProgress[chapIndex] || 0;
+  
+  html += `<div class="arena-card" style="border-color:var(--danger); background:linear-gradient(135deg, rgba(231,76,60,.1), transparent)">
+    <div class="section-title" style="color:var(--danger); margin-top:0">🏰 ${chapter.name}</div>
+    <div style="font-size:11px; color:var(--soft); font-weight:700; margin-bottom:12px">Bats les 5 sbires pour affronter le Boss final !</div>`;
+
+  for(let i = 0; i < 5; i++){
+    const sbire = chapter.sbires[i];
+    const isDefeated = i < progress;
+    const isNext = i === progress;
+    
+    if(isNext) {
+      html += `<div class="arena-btn" style="background:linear-gradient(135deg,#e67e22,#d35400); border:1px solid var(--accent); display:flex; justify-content:space-between; align-items:center; padding:10px 14px; text-align:left; margin-bottom:6px;" onclick="startBossFight(${chapIndex}, 'sbire', ${i})">
+        <div>
+          <div style="font-weight:900; font-size:14px; color:#fff">⚔️ Sbire ${i+1} : ${sbire.emoji} ${sbire.name}</div>
+          <div style="font-size:10px; color:rgba(255,255,255,0.8); margin-top:2px">Niveau ${sbire.lvl} · À vaincre maintenant !</div>
+        </div>
+        <div style="font-size:20px">⚔️</div>
+      </div>`;
+    } else {
+      html += `<div style="display:flex; justify-content:space-between; padding:8px 14px; background:rgba(0,0,0,0.3); border-radius:10px; margin-bottom:6px; opacity:${isDefeated ? 0.5 : 0.3};">
+        <div style="font-size:12px; font-weight:800; color:${isDefeated ? 'var(--primary)' : 'var(--soft)'}">
+          ${isDefeated ? '✅' : '🔒'} ${sbire.emoji} ${sbire.name}
+        </div>
+        <div style="font-size:11px; font-weight:800; color:var(--soft)">Niv. ${sbire.lvl}</div>
+      </div>`;
+    }
+  }
+
+  const boss = chapter.boss;
+  const isBossUnlocked = progress >= 5;
+  
+  // Vérifier si l'équipe actuelle contient un animal qui a déjà battu ce boss
+  const veterans = state.bossVeterans[chapIndex] || [];
+  const hasVeteranInTeam = state.arenaTeam.some(id => veterans.includes(id));
+  
+  const canFightBoss = isBossUnlocked && !hasVeteranInTeam;
+  let bossBtnStyle = canFightBoss ? "background:linear-gradient(135deg,#8e44ad,#6c3483); cursor:pointer;" : "background:var(--card2); cursor:not-allowed; opacity:0.6;";
+  let bossBtnText = "";
+  
+  if(!isBossUnlocked) {
+    bossBtnText = "🔒 Termine les sbires d'abord";
+  } else if(hasVeteranInTeam) {
+    bossBtnText = "⚠️ Un animal de ton équipe l'a déjà vaincu !";
+  } else {
+    bossBtnText = "Défier le Boss";
+  }
+
+  html += `<div class="arena-btn" style="${bossBtnStyle} border:1px solid var(--purple); display:flex; justify-content:space-between; align-items:center; padding:12px 14px; text-align:left; margin-top:10px;" onclick="${canFightBoss?`startBossFight(${chapIndex}, 'boss')`:''}">
+    <div>
+      <div style="font-weight:900; font-size:15px; color:#fff">👑 BOSS : ${chapter.bossEmoji} ${chapter.bossName}</div>
+      <div style="font-size:10px; color:rgba(255,255,255,0.8); margin-top:2px">${bossBtnText}</div>
+    </div>
+    <div style="font-size:22px">${canFightBoss ? '👑' : '🔒'}</div>
+  </div></div>`;
+
   if(state.arenaHistory.length>0){
     html += `<div class="arena-card"><div class="section-title" style="margin:0 0 8px">Derniers combats</div><div class="history-list">`;
     for(const h of state.arenaHistory.slice(-5).reverse()){
@@ -104,6 +173,7 @@ function renderArena(c){
     }
     html += `</div></div>`;
   }
+  
   c.innerHTML = html;
 }
 
@@ -117,12 +187,24 @@ function openTeamPicker(slotIndex){
   currentTeamSlot = slotIndex;
   const owned = Object.keys(state.animals).filter(id=>state.animals[id].owned);
   owned.sort((a,b)=>animalPower(ANIMAL_MAP[b],state.animals[b].level)-animalPower(ANIMAL_MAP[a],state.animals[a].level));
+  
   let html = `<div class="modal-bg" onclick="closeModal(event)"><div class="modal-sheet" onclick="event.stopPropagation()"><div class="modal-handle"></div><div style="padding:16px 18px 8px; display:flex; justify-content:space-between; align-items:center;"><div style="font-size:16px;font-weight:900">Choisir un animal</div><button onclick="closeModal()" style="background:transparent;border:none;color:var(--soft);font-size:14px;font-weight:800;cursor:pointer">✕ Fermer</button></div><div class="team-pick-list">`;
+  
   for(const id of owned){
     const animal = ANIMAL_MAP[id]; const st = state.animals[id];
-    const isSelectedHere = state.arenaTeam[slotIndex] === id; const isElsewhere = state.arenaTeam.includes(id) && state.arenaTeam.indexOf(id) !== slotIndex;
+    const isSelectedHere = state.arenaTeam[slotIndex] === id; 
+    const isElsewhere = state.arenaTeam.includes(id) && state.arenaTeam.indexOf(id) !== slotIndex;
     const elemInfo = ELEMENTS[getElementOf(id)];
-    html += `<div class="pick-card ${isSelectedHere ? 'selected' : ''}" onclick="${isSelectedHere ? '' : `pickTeamAnimal('${id}')`}"><div class="pick-emoji">${animal.emoji}${st.hasShiny?'✨':''}</div><div class="pick-name">${animal.name} ${elemInfo.emoji}</div><div class="pick-lvl">Niv. ${st.level}</div>${isElsewhere ? '<div style="font-size:8px;color:var(--accent);font-weight:900;margin-top:2px">Équipe (clic=échange)</div>' : ''}</div>`;
+    
+    // On vérifie si l'animal a déjà battu le Boss du Chapitre 1
+    const isVeteran = (state.bossVeterans && state.bossVeterans[0]) ? state.bossVeterans[0].includes(id) : false;
+    
+    html += `<div class="pick-card ${isSelectedHere ? 'selected' : ''} ${isVeteran ? 'disabled' : ''}" onclick="${isSelectedHere || isVeteran ? '' : `pickTeamAnimal('${id}')`}">
+      <div class="pick-emoji">${animal.emoji}${st.hasShiny?'✨':''}${isVeteran ? '👑' : ''}</div>
+      <div class="pick-name">${animal.name} ${elemInfo.emoji}</div>
+      <div class="pick-lvl" style="color:${isVeteran ? 'var(--danger)' : 'var(--soft)'}">${isVeteran ? 'Boss déjà vaincu' : 'Niv. '+st.level}</div>
+      ${isElsewhere ? '<div style="font-size:8px;color:var(--accent);font-weight:900;margin-top:2px">Équipe (clic=échange)</div>' : ''}
+    </div>`;
   }
   html += `</div></div></div>`;
   const root = document.getElementById('modal-root'); root.innerHTML = html;
@@ -148,14 +230,15 @@ function renderClassement(c){
     const medal = p.rank===1?'👑':p.rank===2?'🥈':p.rank===3?'🥉':''; const topClass = p.rank<=3?'top'+p.rank:'';
     html += `<div class="rank-item ${topClass} ${isMe?'me':''}"><span class="rank-pos">#${p.rank}</span><span class="rank-emoji">${medal||pLeague.icon}</span><span class="rank-name">${p.name}</span><span class="rank-trophies">${formatNum(p.trophies)} 🏆</span></div>`;
   }
-  html += `</div>`; c.innerHTML = html;
+  html += `</div>`; 
+  c.innerHTML = html;
 }
 
 function renderCollection(c){
   const total = ANIMALS.length, owned = ownedCount(), pct = (owned/total)*100;
   let html = `<div class="arena-card" style="text-align:center"><div style="font-size:20px;font-weight:900;margin-bottom:4px">📖 Encyclopédie</div><div style="font-size:12px;color:var(--soft);font-weight:700;margin-bottom:8px">${owned} / ${total} animaux</div><div class="banner-progress"><div class="banner-progress-fill" style="width:${pct}%"></div></div></div>`;
   for(const zoneKey of ['foret','ocean','montagne','legendaire']){
-    const zone = ZONES[zoneKey]; const animals = ANIMALS.filter(a=>a.zone===zoneKey); const ownedInZone = animals.filter(a=>state.animals[a.id]?.owned); const unlocked = state.zoneUnlocked[zoneKey];
+    const zone = ZONES[zoneKey]; const animals = ANIMALS.filter(a=>a.zone===zoneKey); const ownedInZone = animals.filter(a=>state.animals[a.id]?.owned);     const unlocked = true; // On force l'affichage pour que les joueurs voient ce qu'ils peuvent avoir
     let req = '';
     if(!unlocked){
       if(zoneKey==='ocean') req = `🔒 3 Forêt niv. 3 (${Math.min(countAtLevelInZone('foret',3),3)}/3)`;
@@ -183,7 +266,7 @@ function renderShop(c){
   ];
   for(const egg of eggs){
     const can = state.coins>=egg.cost;
-    html += `<div class="shop-card"><div class="shop-icon">${egg.emoji}</div><div class="shop-info"><div class="shop-name">${egg.name}</div><div class="shop-desc">Communs autorisés</div><div class="shop-owned">${Object.entries(egg.pools).map(([k,v])=>RARITIES[k].name[0]+v+'%').join(' · ')}</div></div><div class="shop-buy-row"><button class="shop-buy" ${!can?'disabled':''} onclick="buyEgg('${egg.key}',1)">🪙${formatNum(egg.cost)}</button><button class="shop-buy" ${!can||state.coins<egg.cost*5?'disabled':''} onclick="buyEgg('${egg.key}',5)">×5</button><button class="shop-buy" ${!can||state.coins<egg.cost*10?'disabled':''} onclick="buyEgg('${egg.key}',10)">×10</button></div></div>`;
+    html += `<div class="shop-card"><div class="shop-icon">${egg.emoji}</div><div class="shop-info"><div class="shop-name">${egg.name}</div><div class="shop-desc">Shiny : 5% de chance · Clic sur ×1/×5/×10</div><div class="shop-owned">${Object.entries(egg.pools).map(([k,v])=>RARITIES[k].name[0]+v+'%').join(' · ')}</div></div><div class="shop-buy-row"><button class="shop-buy" ${!can?'disabled':''} onclick="buyEgg('${egg.key}',1)">🪙${formatNum(egg.cost)}</button><button class="shop-buy" ${!can||state.coins<egg.cost*5?'disabled':''} onclick="buyEgg('${egg.key}',5)">×5</button><button class="shop-buy" ${!can||state.coins<egg.cost*10?'disabled':''} onclick="buyEgg('${egg.key}',10)">×10</button></div></div>`;
   }
   html += `<div class="section-title">💎 Échange</div><div class="shop-card"><div class="shop-icon">🪙</div><div class="shop-info"><div class="shop-name">500 pièces</div><div class="shop-desc">5 gemmes → 500 pièces</div></div><button class="shop-buy" ${state.gems<5?'disabled':''} onclick="buyCoins()">5 💎</button></div><div class="shop-card"><div class="shop-icon">💎</div><div class="shop-info"><div class="shop-name">5 gemmes</div><div class="shop-desc">5 000 pièces → 5 gemmes</div></div><button class="shop-buy" ${state.coins<5000?'disabled':''} onclick="buyGems()">5000🪙</button></div><button style="margin-top:20px;width:100%;padding:10px;background:transparent;border:1px solid rgba(231,76,60,.3);color:var(--danger);border-radius:10px;font-weight:700;font-family:inherit;font-size:12px;cursor:pointer" onclick="resetGame()">🔄 Réinitialiser la partie</button>`;
   c.innerHTML = html;
@@ -219,7 +302,6 @@ function renderAnimalModal(animate){
   const openClass = animate ? '' : 'open'; const displayName = animal.name + stageName + (st.hasShiny?' ✨':'');
   const bg = `linear-gradient(135deg,${elemInfo.color}88,${elemInfo.color}44)`;
   
-  // LIGNE XP CORRIGÉE ICI :
   const xpText = isMax||isCapped ? '' : `${st.xp} / ${needed} XP`;
 
   let html = `<div class="modal-bg ${openClass}" onclick="closeModal(event)"><div class="modal-sheet" onclick="event.stopPropagation()"><div class="modal-handle"></div>
