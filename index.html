@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a1512">
+<title>ANIMALIA</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header id="hud">
+    <div class="hud-top">
+      <div class="logo">ANIMALIA</div>
+      <div class="resources">
+        <div class="res"><span class="res-icon">🪙</span><span id="coins">0</span><span class="res-sub" id="income">+0/m</span></div>
+        <div class="res"><span class="res-icon">💎</span><span id="gems">0</span></div>
+        <div class="res"><span class="res-icon">🏆</span><span id="trophies">0</span></div>
+      </div>
+    </div>
+    <div class="hud-sub">
+      <div>🏞️ Zoo niv. <span id="zooLvl">1</span></div>
+      <div class="league-pill" id="league-badge">🥉 Bronze II</div>
+    </div>
+  </header>
+  <main id="content"></main>
+  <nav id="tabs">
+    <button data-tab="zoo" class="active">🏞️<span>Zoo</span></button>
+    <button data-tab="arena">⚔️<span>Arène</span></button>
+    <button data-tab="classement">🏆<span>Rang</span></button>
+    <button data-tab="collection">📖<span>Coll.</span></button>
+    <button data-tab="shop">🛒<span>Boutique</span></button>
+  </nav>
+</div>
+<div id="modal-root"></div>
+<div id="combat-root"></div>
+<div id="toast-root"></div>
+
+<!-- L'ordre de chargement est important ! -->
+<script src="data.js"></script>
+<script src="state.js"></script>
+<script src="audio.js"></script>
+<script src="ui.js"></script>
+<script src="combat.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
