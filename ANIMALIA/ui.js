@@ -1,0 +1,425 @@
+function render(){
+  const league = getLeague(state.trophies);
+  document.getElementById('coins').textContent = formatNum(state.coins);
+  document.getElementById('gems').textContent = state.gems;
+  document.getElementById('trophies').textContent = state.trophies;
+  document.getElementById('income').textContent = '+' + computeIncomePerMin() + '/m';
+  document.getElementById('zooLvl').textContent = state.zooLevel;
+  const lb = document.getElementById('league-badge'); lb.innerHTML = league.icon + ' ' + league.name; lb.style.color = league.color;
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab===state.currentTab));
+  const c = document.getElementById('content');
+  const tabChanged = lastRenderedTab !== state.currentTab;
+  if(tabChanged) c.scrollTop = 0;
+  lastRenderedTab = state.currentTab;
+  if(state.currentTab==='zoo') renderZoo(c);
+  else if(state.currentTab==='arena') renderArena(c);
+  else if(state.currentTab==='classement') renderClassement(c);
+  else if(state.currentTab==='collection') renderCollection(c);
+  else if(state.currentTab==='shop') renderShop(c);
+}
+
+function renderAnimalCardHTML(animal, st, opts){
+  opts = opts || {};
+  const r = RARITIES[animal.rarity]; const elemInfo = ELEMENTS[getElementOf(animal.id)];
+  const cap = zooCap(); const isMax = st.level>=MAX_ANIMAL_LEVEL; const isCapped = st.level>=cap;
+  const needed = xpForLevel(st.level); const pct = (isMax||isCapped)?100:Math.min(100,(st.xp/needed)*100);
+  const stage = getEvolutionStage(st.level); const stageClass = stage===3?'stage3':(stage===2?'stage2':'');
+  const shinyClass = st.hasShiny?'shiny':''; const displayName = getDisplayName(animal, st.level);
+  const onClick = opts.onClick || `openAnimal('${animal.id}')`;
+  return `<div class="animal-card ${stageClass} ${shinyClass} ${isCapped&&!isMax?'capped':''}" style="border-left-color:${elemInfo.color}" onclick="${onClick}">
+    <div class="rarity-dot" style="background:${r.color}"></div>
+    <div class="elem-badge">${elemInfo.emoji}</div>
+    ${st.count>1?`<div class="count-badge">×${st.count}</div>`:''}
+    <div class="animal-emoji">${animal.emoji}${st.hasShiny?'✨':''}</div>
+    <div class="animal-name">${displayName}</div>
+    <div class="animal-level">${isMax?'MAX':(isCapped?'⛔ cap':('Niv. '+st.level))}</div>
+    <div class="animal-xp-bar"><div class="animal-xp-fill" style="width:${pct}%"></div></div>
+  </div>`;
+}
+
+function renderZoo(c){
+  let html = '';
+  if(isZooUpgrading()){
+    html += `<div class="upgrade-card"><div class="upgrade-title">⏳ Amélioration du zoo en cours</div><div class="upgrade-timer">${formatDuration(zooUpgradeRemainingMs())} restantes</div><div class="upgrade-info">Niveau ${state.zooLevel} → ${state.zooLevel+1}</div></div>`;
+  } else if(state.zooLevel < MAX_ZOO_LEVEL){
+    const cost = zooUpgradeCost(state.zooLevel); const can = state.coins>=cost.coins && state.gems>=cost.gems;
+    const nextCap = Math.min(MAX_ANIMAL_LEVEL,(state.zooLevel+1)*ZOO_CAP_PER_LEVEL); const dur = zooUpgradeDuration(state.zooLevel); const isInstant = dur === 0;
+    html += `<div class="upgrade-card"><div class="upgrade-title">⬆️ Améliorer le zoo</div><div class="upgrade-info">Niveau ${state.zooLevel} → ${state.zooLevel+1}<br>Niveau animal max : ${zooCap()} → ${nextCap}<br>Durée : ${isInstant?'⚡ Instantané':formatDuration(dur)}</div><div class="upgrade-cost"><span>🪙 ${formatNum(cost.coins)}</span><span>💎 ${cost.gems}</span></div><button class="upgrade-btn ${isInstant?'instant':''}" ${can?'':'disabled'} onclick="startZooUpgrade()">${isInstant?'⚡ Améliorer instantanément':"Lancer l'amélioration"}</button></div>`;
+  }
+  html += `<div class="arena-card"><div class="section-title" style="margin:0 0 8px">📊 Statistiques</div><div class="stats-grid-2"><div><span>🍽️ Repas</span><span>${state.stats.totalFeeds}</span></div><div><span>🥚 Œufs</span><span>${state.stats.eggsOpened}</span></div><div><span>⚔️ Victoires</span><span>${state.stats.arenaWins}</span></div><div><span>✨ Shiny</span><span>${state.stats.shinyFound}</span></div></div></div>`;
+  let hasAnimals = false;
+  for(const zoneKey of ['foret','ocean','montagne','legendaire']){
+    const zone = ZONES[zoneKey];
+    const ownedInZone = ANIMALS.filter(a=>a.zone===zoneKey && state.animals[a.id]?.owned);
+    if(ownedInZone.length===0) continue;
+    hasAnimals = true;
+    html += `<div class="section-title" style="color:${zone.color}">${zone.emoji} ${zone.name} · ${ownedInZone.length}/${ANIMALS.filter(a=>a.zone===zoneKey).length}</div><div class="animal-grid">`;
+    for(const animal of ownedInZone){ html += renderAnimalCardHTML(animal, state.animals[animal.id]); }
+    html += '</div>';
+  }
+  if(!hasAnimals) html += `<div class="empty">🦗<br><br>Pas encore d'animaux.<br>Ouvre des œufs dans la Boutique !</div>`;
+  c.innerHTML = html;
+}
+
+function startZooUpgrade(){
+  if(isZooUpgrading() || state.zooLevel>=MAX_ZOO_LEVEL) return;
+  const cost = zooUpgradeCost(state.zooLevel);
+  if(state.coins<cost.coins) return showToast('Pas assez de pièces !','warn');
+  if(state.gems<cost.gems) return showToast('Pas assez de gemmes !','warn');
+  state.coins -= cost.coins; state.gems -= cost.gems;
+  const dur = zooUpgradeDuration(state.zooLevel);
+  if(dur===0){ state.zooLevel++; playUpgrade(); showToast(`🏞️ Zoo niveau ${state.zooLevel} !`,'success'); }
+  else { state.zooUpgradeEnd = Date.now() + dur; playBuy(); showToast('Amélioration lancée !','info'); }
+  save(); render();
+}
+
+function renderArena(c){
+  if(state.arenaTeam.length===0) state.arenaTeam = pickBestTeam();
+  state.arenaTeam = state.arenaTeam.filter(id=>state.animals[id]?.owned);
+  while(state.arenaTeam.length<3){
+    const owned = Object.keys(state.animals).filter(id=>state.animals[id].owned && !state.arenaTeam.includes(id));
+    if(owned.length===0) break;
+    owned.sort((a,b)=>animalPower(ANIMAL_MAP[b],state.animals[b].level)-animalPower(ANIMAL_MAP[a],state.animals[a].level));
+    state.arenaTeam.push(owned[0]);
+  }
+  const league = getLeague(state.trophies); const myRank = calculateRank(state.trophies);
+  const myPower = state.arenaTeam.reduce((s,id)=>s+animalPower(ANIMAL_MAP[id],state.animals[id].level),0);
+  let html = `<div class="arena-card"><div class="arena-header"><div class="league-big" style="color:${league.color}">${league.icon} ${league.name}</div><div class="league-sub">${state.trophies} 🏆 · Classement #${myRank}</div></div><div style="text-align:center;font-size:11px;color:var(--soft);font-weight:700;margin-bottom:10px">Puissance : ${formatNum(myPower)}</div><div class="section-title" style="margin:0 0 8px">Ton équipe</div><div class="team-picker">`;
+  for(let i=0;i<3;i++){
+    const id = state.arenaTeam[i];
+    if(id && state.animals[id]){
+      const animal = ANIMAL_MAP[id]; const st = state.animals[id]; const elemInfo = ELEMENTS[getElementOf(id)];
+      html += `<div class="team-slot filled" onclick="openTeamPicker(${i})"><div class="team-slot-emoji">${animal.emoji}${st.hasShiny?'✨':''}</div><div class="team-slot-name">${animal.name} ${elemInfo.emoji}</div><div class="team-slot-lvl">Niv. ${st.level}</div></div>`;
+    } else {
+      html += `<div class="team-slot" onclick="openTeamPicker(${i})"><div class="team-slot-emoji">➕</div><div class="team-slot-name">Ajouter</div></div>`;
+    }
+  }
+  html += `</div>`;
+  const canFight = state.arenaTeam.length===3 && !combat;
+  html += `<button class="arena-btn" ${canFight?'':'disabled'} onclick="startArena()">⚔️ TROUVER UN ADVERSAIRE</button></div>`;
+  if(state.arenaHistory.length>0){
+    html += `<div class="arena-card"><div class="section-title" style="margin:0 0 8px">Derniers combats</div><div class="history-list">`;
+    for(const h of state.arenaHistory.slice(-5).reverse()){
+      html += `<div class="history-row"><span class="result ${h.win?'win':'loss'}">${h.win?'VICTOIRE':'DÉFAITE'}</span><span class="name">${h.oppName}</span><span class="tr" style="color:${h.win?'var(--primary)':'var(--danger)'}">${h.trophyChange>0?'+'+h.trophyChange:h.trophyChange} 🏆</span></div>`;
+    }
+    html += `</div></div>`;
+  }
+  c.innerHTML = html;
+}
+
+function pickBestTeam(){
+  const owned = Object.keys(state.animals).filter(id=>state.animals[id].owned);
+  owned.sort((a,b)=>animalPower(ANIMAL_MAP[b],state.animals[b].level)-animalPower(ANIMAL_MAP[a],state.animals[a].level));
+  return owned.slice(0,3);
+}
+
+function openTeamPicker(slotIndex){
+  currentTeamSlot = slotIndex;
+  const owned = Object.keys(state.animals).filter(id=>state.animals[id].owned);
+  owned.sort((a,b)=>animalPower(ANIMAL_MAP[b],state.animals[b].level)-animalPower(ANIMAL_MAP[a],state.animals[a].level));
+  let html = `<div class="modal-bg" onclick="closeModal(event)"><div class="modal-sheet" onclick="event.stopPropagation()"><div class="modal-handle"></div><div style="padding:16px 18px 8px; display:flex; justify-content:space-between; align-items:center;"><div style="font-size:16px;font-weight:900">Choisir un animal</div><button onclick="closeModal()" style="background:transparent;border:none;color:var(--soft);font-size:14px;font-weight:800;cursor:pointer">✕ Fermer</button></div><div class="team-pick-list">`;
+  for(const id of owned){
+    const animal = ANIMAL_MAP[id]; const st = state.animals[id];
+    const isSelectedHere = state.arenaTeam[slotIndex] === id; const isElsewhere = state.arenaTeam.includes(id) && state.arenaTeam.indexOf(id) !== slotIndex;
+    const elemInfo = ELEMENTS[getElementOf(id)];
+    html += `<div class="pick-card ${isSelectedHere ? 'selected' : ''}" onclick="${isSelectedHere ? '' : `pickTeamAnimal('${id}')`}"><div class="pick-emoji">${animal.emoji}${st.hasShiny?'✨':''}</div><div class="pick-name">${animal.name} ${elemInfo.emoji}</div><div class="pick-lvl">Niv. ${st.level}</div>${isElsewhere ? '<div style="font-size:8px;color:var(--accent);font-weight:900;margin-top:2px">Équipe (clic=échange)</div>' : ''}</div>`;
+  }
+  html += `</div></div></div>`;
+  const root = document.getElementById('modal-root'); root.innerHTML = html;
+  const bg = root.querySelector('.modal-bg'); void bg.offsetWidth; bg.classList.add('open');
+}
+
+function pickTeamAnimal(id){
+  if(currentTeamSlot === null) return;
+  const existingIdx = state.arenaTeam.indexOf(id);
+  if(existingIdx >= 0 && existingIdx !== currentTeamSlot){
+    const old = state.arenaTeam[currentTeamSlot]; state.arenaTeam[currentTeamSlot] = id; state.arenaTeam[existingIdx] = old;
+  } else { state.arenaTeam[currentTeamSlot] = id; }
+  state.arenaTeam = state.arenaTeam.filter(x=>x);
+  closeModal(); save(); render(); playClick();
+}
+
+function renderClassement(c){
+  const myRank = calculateRank(state.trophies); const league = getLeague(state.trophies); const top100 = getTop100Players();
+  let html = `<div class="rank-tab-header"><div class="big" style="color:${league.color}">${league.icon}</div><div class="sub">${league.name} · Classement #${myRank}</div><div class="trophy-row">${state.trophies} 🏆</div></div>`;
+  html += `<div class="section-title">🌍 Top 100 mondial</div><div class="top100-list">`;
+  for(const p of top100){
+    const pLeague = getLeague(p.trophies); const isMe = p.rank===myRank;
+    const medal = p.rank===1?'👑':p.rank===2?'🥈':p.rank===3?'🥉':''; const topClass = p.rank<=3?'top'+p.rank:'';
+    html += `<div class="rank-item ${topClass} ${isMe?'me':''}"><span class="rank-pos">#${p.rank}</span><span class="rank-emoji">${medal||pLeague.icon}</span><span class="rank-name">${p.name}</span><span class="rank-trophies">${formatNum(p.trophies)} 🏆</span></div>`;
+  }
+  html += `</div>`; c.innerHTML = html;
+}
+
+function renderCollection(c){
+  const total = ANIMALS.length, owned = ownedCount(), pct = (owned/total)*100;
+  let html = `<div class="arena-card" style="text-align:center"><div style="font-size:20px;font-weight:900;margin-bottom:4px">📖 Encyclopédie</div><div style="font-size:12px;color:var(--soft);font-weight:700;margin-bottom:8px">${owned} / ${total} animaux</div><div class="banner-progress"><div class="banner-progress-fill" style="width:${pct}%"></div></div></div>`;
+  for(const zoneKey of ['foret','ocean','montagne','legendaire']){
+    const zone = ZONES[zoneKey]; const animals = ANIMALS.filter(a=>a.zone===zoneKey); const ownedInZone = animals.filter(a=>state.animals[a.id]?.owned); const unlocked = state.zoneUnlocked[zoneKey];
+    let req = '';
+    if(!unlocked){
+      if(zoneKey==='ocean') req = `🔒 3 Forêt niv. 3 (${Math.min(countAtLevelInZone('foret',3),3)}/3)`;
+      if(zoneKey==='montagne') req = `🔒 3 Océan niv. 6 (${Math.min(countAtLevelInZone('ocean',6),3)}/3)`;
+      if(zoneKey==='legendaire') req = `🔒 3 Montagne niv. 15 + 200 🏆`;
+    }
+    html += `<div class="zone-banner ${unlocked?'':'locked'}"><div class="banner-title" style="color:${zone.color}">${zone.emoji} ${zone.name}</div><div class="banner-sub">${ownedInZone.length}/${animals.length} possédés${!unlocked?' · '+req:''}</div><div class="banner-progress"><div class="banner-progress-fill" style="width:${(ownedInZone.length/animals.length)*100}%"></div></div></div><div class="collection-grid">`;
+    for(const animal of animals){
+      const st = state.animals[animal.id]; const r = RARITIES[animal.rarity]; const elemInfo = ELEMENTS[getElementOf(animal.id)];
+      if(st?.owned){ html += `<div class="coll-card" style="--rarity-color:${r.color}"><div class="coll-emoji">${animal.emoji}${st.hasShiny?'✨':''}</div><div class="coll-name">${animal.name} ${elemInfo.emoji}</div><div class="coll-rarity" style="color:${r.color}">${r.name}</div></div>`; }
+      else { html += `<div class="coll-card locked" style="--rarity-color:${r.color}"><div class="coll-emoji">❓</div><div class="coll-name">???</div><div class="coll-rarity">${r.name}</div></div>`; }
+    }
+    html += '</div>';
+  }
+  c.innerHTML = html;
+}
+
+function renderShop(c){
+  let html = `<div class="section-title">🥚 Œufs par rareté</div>`;
+  const eggs = [
+    {key:'commun',name:'Œuf Commun',emoji:'🥚',cost:500,pools:{commun:80,rare:18,epique:2}},
+    {key:'rare',name:'Œuf Rare',emoji:'🥚',cost:2500,pools:{rare:70,epique:25,legendaire:5}},
+    {key:'epique',name:'Œuf Épique',emoji:'🥚',cost:10000,pools:{epique:65,legendaire:30,mythique:5}},
+    {key:'legendaire',name:'Œuf Légendaire',emoji:'🥚',cost:50000,pools:{legendaire:70,mythique:30}}
+  ];
+  for(const egg of eggs){
+    const can = state.coins>=egg.cost;
+    html += `<div class="shop-card"><div class="shop-icon">${egg.emoji}</div><div class="shop-info"><div class="shop-name">${egg.name}</div><div class="shop-desc">Communs autorisés</div><div class="shop-owned">${Object.entries(egg.pools).map(([k,v])=>RARITIES[k].name[0]+v+'%').join(' · ')}</div></div><div class="shop-buy-row"><button class="shop-buy" ${!can?'disabled':''} onclick="buyEgg('${egg.key}',1)">🪙${formatNum(egg.cost)}</button><button class="shop-buy" ${!can||state.coins<egg.cost*5?'disabled':''} onclick="buyEgg('${egg.key}',5)">×5</button><button class="shop-buy" ${!can||state.coins<egg.cost*10?'disabled':''} onclick="buyEgg('${egg.key}',10)">×10</button></div></div>`;
+  }
+  html += `<div class="section-title">💎 Échange</div><div class="shop-card"><div class="shop-icon">🪙</div><div class="shop-info"><div class="shop-name">500 pièces</div><div class="shop-desc">5 gemmes → 500 pièces</div></div><button class="shop-buy" ${state.gems<5?'disabled':''} onclick="buyCoins()">5 💎</button></div><div class="shop-card"><div class="shop-icon">💎</div><div class="shop-info"><div class="shop-name">5 gemmes</div><div class="shop-desc">5 000 pièces → 5 gemmes</div></div><button class="shop-buy" ${state.coins<5000?'disabled':''} onclick="buyGems()">5000🪙</button></div><button style="margin-top:20px;width:100%;padding:10px;background:transparent;border:1px solid rgba(231,76,60,.3);color:var(--danger);border-radius:10px;font-weight:700;font-family:inherit;font-size:12px;cursor:pointer" onclick="resetGame()">🔄 Réinitialiser la partie</button>`;
+  c.innerHTML = html;
+}
+
+function resetGame(){
+  if(!confirm('⚠️ Réinitialiser TOUTE la partie ?')) return;
+  isResetting = true; clearTimeout(saveTimeout);
+  try{ Object.keys(localStorage).forEach(k=>{ if(k.startsWith('animalia_')) localStorage.removeItem(k); }); }catch(e){}
+  state = defaultState(); cachedTop100 = null; lastRenderedTab = null; combat = null; combatSpeed = 1;
+  document.getElementById('modal-root').innerHTML = '';
+  document.getElementById('combat-root').classList.remove('open'); document.getElementById('combat-root').innerHTML = '';
+  location.reload();
+}
+
+function openAnimal(id){
+  const animal = ANIMAL_MAP[id]; const st = state.animals[id];
+  if(!animal || !st?.owned) return;
+  currentModalAnimalId = id; renderAnimalModal(true);
+}
+
+function renderAnimalModal(animate){
+  const id = currentModalAnimalId; if(!id) return;
+  const animal = ANIMAL_MAP[id]; const st = state.animals[id];
+  const r = RARITIES[animal.rarity]; const elemInfo = ELEMENTS[getElementOf(id)];
+  const stats = animalStats(animal,st.level); const cap = zooCap();
+  const isMax = st.level>=MAX_ANIMAL_LEVEL; const isCapped = st.level>=cap;
+  const needed = xpForLevel(st.level); const pct = (isMax||isCapped)?100:Math.min(100,(st.xp/needed)*100);
+  const canFeed = !isMax && !isCapped;
+  const special = animal.special; const specLvl = st.specialLvl;
+  const stage = getEvolutionStage(st.level); const stageName = stage===3?' 👑 Ancestral':(stage===2?' ⭐ Majeur':'');
+  const specUnlockCost = special.gemCost; const specUpgradeCost = special.gemCost*(specLvl+1);
+  const openClass = animate ? '' : 'open'; const displayName = animal.name + stageName + (st.hasShiny?' ✨':'');
+  const bg = `linear-gradient(135deg,${elemInfo.color}88,${elemInfo.color}44)`;
+  
+  // LIGNE XP CORRIGÉE ICI :
+  const xpText = isMax||isCapped ? '' : `${st.xp} / ${needed} XP`;
+
+  let html = `<div class="modal-bg ${openClass}" onclick="closeModal(event)"><div class="modal-sheet" onclick="event.stopPropagation()"><div class="modal-handle"></div>
+    <div class="animal-hero ${st.hasShiny?'shiny':''}" style="background:${bg}"><div class="hero-emoji" id="hero-emoji">${animal.emoji}${st.hasShiny?'✨':''}</div><div class="hero-name">${displayName}</div><div class="hero-badges"><span class="badge" style="background:${r.color}">${r.name}</span><span class="badge" style="background:${elemInfo.color}">${elemInfo.emoji} ${elemInfo.name}</span>${st.count>1?`<span class="badge" style="background:var(--accent)">×${st.count}</span>`:''}</div></div>
+    <div class="modal-body">
+      <div class="stats-grid"><div class="stat-box"><div class="lbl">⚔️ Atk</div><div class="val">${stats.atk}</div></div><div class="stat-box"><div class="lbl">❤️ PV</div><div class="val">${stats.hp}</div></div><div class="stat-box"><div class="lbl">🛡️ Déf</div><div class="val">${stats.def}</div></div></div>
+      <div class="xp-info"><div class="xp-row"><span>Niveau ${st.level}${isMax?' ✨ MAX':(isCapped?' ⛔ cap':(' / '+cap))}</span><span>${xpText}</span></div><div class="xp-bar-large"><div class="xp-fill-large" style="width:${pct}%"></div></div>${isCapped&&!isMax?`<div style="font-size:11px;color:var(--danger);font-weight:800;margin-top:6px;text-align:center">⛔ Améliore le zoo pour dépasser niv. ${cap}</div>`:''}${stage<3?`<div style="font-size:10px;color:var(--accent);font-weight:800;margin-top:4px;text-align:center">Prochaine évolution au niveau ${stage===1?20:40}</div>`:''}</div>
+      <div class="special-card"><div class="special-title">⭐ ${special.name}</div><div class="special-desc">${specLvl>0?('Dégâts ×'+(special.effect==='lifesteal'?'1.5':'2')+' · niv. '+specLvl+'/5'):'Attaque spéciale à débloquer'}</div><div class="special-lvl">${[1,2,3,4,5].map(i=>`<div class="special-pip ${i<=specLvl?'filled':''}"></div>`).join('')}</div>${specLvl===0?`<button class="special-btn" ${state.gems<specUnlockCost?'disabled':''} onclick="unlockSpecial('${id}')">Débloquer · ${specUnlockCost} 💎</button>`:specLvl<5?`<button class="special-btn" ${state.gems<specUpgradeCost?'disabled':''} onclick="upgradeSpecial('${id}')">Améliorer · ${specUpgradeCost} 💎</button>`:`<button class="special-btn" disabled>✨ MAX</button>`}</div>
+      <div class="skills-section"><div class="skills-title">🎯 Compétences</div><div class="skill-slots">`;
+  for(let i=0;i<2;i++){
+    const skill = st.skills[i];
+    if(skill && SKILLS[skill.id]){
+      const s = SKILLS[skill.id];
+      html += `<div class="skill-slot" onclick="openSkillPicker(${i})"><div class="s-emoji">${s.emoji}</div><div class="s-name">${s.name}</div><div class="s-lvl">Niv. ${skill.level}/3</div><div class="s-pips">${[1,2,3].map(x=>`<div class="s-pip ${x<=skill.level?'filled':''}"></div>`).join('')}</div></div>`;
+    } else { html += `<div class="skill-slot empty" onclick="openSkillPicker(${i})">➕<br>Compétence</div>`; }
+  }
+  html += `</div></div><div class="food-grid">`;
+  for(const [foodKey,food] of Object.entries(FOODS)){
+    if(food.unlockLevel && st.level<food.unlockLevel) continue;
+    const isFav = foodKey===animal.food; const xpGain = isFav?food.xp*2:food.xp;
+    const disabled = state.coins<food.cost || !canFeed;
+    html += `<button class="food-btn ${isFav?'fav':''}" onclick="feedAnimal('${id}','${foodKey}')" ${disabled?'disabled':''}><div class="food-emoji">${food.emoji}</div><div class="food-name">${food.name}</div><div class="food-xp">+${xpGain} XP</div><div class="food-cost">${food.cost} 🪙</div></button>`;
+  }
+  html += `</div>`;
+  if(st.count > 1){
+    const price = RARITY_SELL[animal.rarity] || 30;
+    html += `<button class="sell-btn" onclick="sellDuplicate('${id}')">💰 Vendre 1 double (+${price} 🪙) · ${st.count} restants</button>`;
+  }
+  html += `</div></div></div>`;
+  document.getElementById('modal-root').innerHTML = html;
+  if(animate) requestAnimationFrame(()=>document.querySelector('.modal-bg').classList.add('open'));
+}
+
+function closeModal(e){
+  if(e && e.target!==e.currentTarget) return;
+  const bg = document.querySelector('.modal-bg'); if(!bg) return;
+  bg.classList.remove('open');
+  setTimeout(()=>{ document.getElementById('modal-root').innerHTML = ''; currentModalAnimalId = null; render(); },320);
+}
+
+function feedAnimal(id, foodKey){
+  const animal = ANIMAL_MAP[id]; const st = state.animals[id]; const food = FOODS[foodKey];
+  if(!animal || !st) return;
+  const cap = zooCap();
+  if(st.level>=MAX_ANIMAL_LEVEL) return showToast('Niveau maximum !','warn');
+  if(st.level>=cap) return showToast('⛔ Améliore ton zoo !','warn');
+  if(state.coins<food.cost) return showToast('Pas assez de pièces !','warn');
+  state.coins -= food.cost;
+  const isFav = foodKey===animal.food; const xpGain = isFav?food.xp*2:food.xp;
+  st.xp += xpGain; state.stats.totalFeeds++;
+  let leveledUp = false; const prevStage = getEvolutionStage(st.level);
+  while(st.level<cap && st.level<MAX_ANIMAL_LEVEL && st.xp>=xpForLevel(st.level)){ st.xp -= xpForLevel(st.level); st.level++; leveledUp = true; }
+  if(st.level>=cap || st.level>=MAX_ANIMAL_LEVEL) st.xp = 0;
+  const newStage = getEvolutionStage(st.level);
+  document.getElementById('coins').textContent = formatNum(state.coins);
+  checkZoneUnlocks(); save(); renderAnimalModal(false);
+  requestAnimationFrame(()=>{ const emoji = document.getElementById('hero-emoji'); if(emoji){ emoji.classList.remove('bounce'); void emoji.offsetWidth; emoji.classList.add('bounce'); } });
+  if(newStage > prevStage){ playUpgrade(); showToast(`✨ ${animal.name} ÉVOLUE ! Stage ${newStage}`, 'evolve'); }
+  else if(leveledUp){ playLevelUp(); showToast(`⬆️ ${animal.name} → niv. ${st.level} !`,'success'); }
+  else playFeed();
+}
+
+function unlockSpecial(id){
+  const animal = ANIMAL_MAP[id]; const st = state.animals[id];
+  const cost = animal.special.gemCost;
+  if(state.gems<cost) return showToast('Pas assez de gemmes !','warn');
+  state.gems -= cost; st.specialLvl = 1;
+  save(); renderAnimalModal(false); render(); playUpgrade(); showToast(`⭐ ${animal.special.name} débloquée !`,'evolve');
+}
+function upgradeSpecial(id){
+  const animal = ANIMAL_MAP[id]; const st = state.animals[id];
+  if(st.specialLvl>=5) return;
+  const cost = animal.special.gemCost*(st.specialLvl+1);
+  if(state.gems<cost) return showToast('Pas assez de gemmes !','warn');
+  state.gems -= cost; st.specialLvl++;
+  save(); renderAnimalModal(false); render(); playUpgrade(); showToast(`⭐ ${animal.special.name} → niv. ${st.specialLvl}`,'evolve');
+}
+
+function sellDuplicate(id){
+  const st = state.animals[id]; const animal = ANIMAL_MAP[id];
+  if(!st || st.count <= 1) return showToast('Impossible de vendre le dernier !','warn');
+  const price = RARITY_SELL[animal.rarity] || 30;
+  st.count--; state.coins += price; state.stats.dupesSold++;
+  save(); playBuy(); renderAnimalModal(false); render();
+  showToast(`💰 +${price} 🪙 · ${st.count} restants`,'success');
+}
+
+function openSkillPicker(slot){
+  const id = currentModalAnimalId; const animal = ANIMAL_MAP[id]; const st = state.animals[id];
+  if(!animal || !st) return;
+  const current = st.skills[slot];
+  let html = `<div class="modal-bg" onclick="closeModal(event)"><div class="modal-sheet" onclick="event.stopPropagation()"><div class="modal-handle"></div><div style="padding:16px 18px 8px"><div style="font-size:16px;font-weight:900">Compétence ${slot+1}</div><div style="font-size:11px;color:var(--soft);font-weight:700;margin-top:4px">${current?`Actuelle : ${SKILLS[current.id].name} niv. ${current.level}`:'Choisis une compétence'}</div></div><div class="skill-picker-grid">`;
+  for(const [skId, sk] of Object.entries(SKILLS)){
+    const isAlreadyUsed = st.skills.some((s,i)=>s && i!==slot && s.id === skId);
+    const canAfford = state.gems >= 15; const disabled = isAlreadyUsed || !canAfford;
+    html += `<div class="skill-pick-card ${disabled?'disabled':''}" onclick="${disabled?'':`equipSkill('${slot}','${skId}')`}"><div class="skill-pick-emoji">${sk.emoji}</div><div class="skill-pick-name">${sk.name}</div><div class="skill-pick-desc">${sk.desc}</div><div style="font-size:9px;color:var(--accent);font-weight:800;margin-top:3px">${isAlreadyUsed?'Déjà équipée':'15 💎'}</div></div>`;
+  }
+  html += `</div>`;
+  if(current){
+    const upgradeCost = current.level === 1 ? 20 : (current.level === 2 ? 40 : 0);
+    if(upgradeCost > 0){ html += `<div style="padding:0 18px 8px"><button class="special-btn" ${state.gems<upgradeCost?'disabled':''} onclick="upgradeSkill('${slot}')">Améliorer niv. ${current.level+1} · ${upgradeCost} 💎</button></div>`; } 
+    else { html += `<div style="padding:0 18px 8px;text-align:center;font-size:11px;color:var(--primary);font-weight:800">✨ Niveau max (3/3)</div>`; }
+    html += `<div style="padding:0 18px 16px"><button class="sell-btn" style="background:linear-gradient(135deg,#5a3a1e,#8a5a2e)" onclick="unequipSkill(${slot})">❌ Retirer (gratuit)</button></div>`;
+  }
+  html += `</div></div>`;
+  const root = document.getElementById('modal-root'); root.innerHTML = html;
+  requestAnimationFrame(()=>root.querySelector('.modal-bg').classList.add('open'));
+}
+
+function equipSkill(slot, skillId){
+  const id = currentModalAnimalId; const st = state.animals[id];
+  if(!st) return;
+  const current = st.skills[slot]; const cost = current ? 0 : 15;
+  if(state.gems < cost) return showToast('Pas assez de gemmes !','warn');
+  state.gems -= cost; st.skills[slot] = { id: skillId, level: 1 };
+  save(); playUpgrade(); closeModal(); setTimeout(()=>{ openAnimal(id); }, 350); render();
+  showToast(`🎯 ${SKILLS[skillId].name} équipée !`,'success');
+}
+function upgradeSkill(slot){
+  const id = currentModalAnimalId; const st = state.animals[id];
+  if(!st) return;
+  const current = st.skills[slot];
+  if(!current || current.level >= 3) return;
+  const cost = current.level === 1 ? 20 : 40;
+  if(state.gems < cost) return showToast('Pas assez de gemmes !','warn');
+  state.gems -= cost; current.level++;
+  save(); playUpgrade(); closeModal(); setTimeout(()=>{ openAnimal(id); }, 350); render();
+  showToast(`🎯 ${SKILLS[current.id].name} → niv. ${current.level}`,'evolve');
+}
+function unequipSkill(slot){
+  const id = currentModalAnimalId; const st = state.animals[id];
+  if(!st) return;
+  st.skills[slot] = null; save(); playClick(); closeModal(); setTimeout(()=>{ openAnimal(id); }, 350); render();
+}
+
+function buyEgg(eggKey, count){
+  const egg = EGG_DEFS[eggKey]; if(!egg) return;
+  const totalCost = egg.cost * count;
+  
+  if(state.coins < totalCost) return showToast('Pas assez de pièces !','warn');
+  
+  if (count > 1) {
+    const msg = `Confirmer l'achat de ${count} œufs pour ${formatNum(totalCost)} 🪙 ?`;
+    if (!confirm(msg)) return;
+  }
+
+  state.coins -= totalCost; 
+  const results = [];
+  
+  for(let i=0; i<count; i++){ 
+    results.push(drawOneEgg(egg)); 
+  }
+  
+  state.stats.eggsOpened += count; 
+  save(); 
+  playEgg();
+  if(results.some(r=>r.isShiny)) playShiny();
+  showEggResults(results); 
+  render();
+}
+
+function drawOneEgg(egg){
+  const rand = Math.random()*100; let accum = 0; let chosenRarity = 'commun';
+  for(const [rarity, pct] of Object.entries(egg.pools)){ accum += pct; if(rand < accum){ chosenRarity = rarity; break; } }
+  const pool = ANIMALS.filter(a=>a.rarity===chosenRarity);
+  const animal = pool[Math.floor(Math.random()*pool.length)];
+  if(!animal) return null;
+  const isShiny = Math.random() < SHINY_RATE;
+  const existing = state.animals[animal.id];
+  if(existing && existing.owned){
+    existing.count = (existing.count || 1) + 1;
+    if(isShiny && !existing.hasShiny){ existing.hasShiny = true; state.stats.shinyFound++; }
+    return {animal, isShiny, isNew:false, count:existing.count};
+  } else {
+    state.animals[animal.id] = {level:1,xp:0,specialLvl:0,owned:true,count:1,hasShiny:isShiny,skills:[null,null]};
+    if(isShiny) state.stats.shinyFound++;
+    return {animal, isShiny, isNew:true, count:1};
+  }
+}
+
+function showEggResults(results){
+  const validResults = results.filter(r=>r); if(validResults.length === 0) return;
+  let title, content;
+  if(validResults.length === 1){
+    const r = validResults[0]; const rarity = RARITIES[r.animal.rarity]; const elemInfo = ELEMENTS[getElementOf(r.animal.id)];
+    content = `<div style="font-size:80px;line-height:1;filter:drop-shadow(0 0 20px ${r.isShiny?'#ffd700':'transparent'})">${r.animal.emoji}${r.isShiny?'✨':''}</div><div style="font-size:22px;font-weight:900;margin:12px 0 4px">${r.animal.name}${r.isShiny?' SHINY':''}</div><div class="hero-badges" style="justify-content:center;margin-bottom:12px"><span class="badge" style="background:${rarity.color}">${rarity.name}</span><span class="badge" style="background:${elemInfo.color}">${elemInfo.emoji} ${elemInfo.name}</span></div><div style="font-size:12px;color:var(--soft);font-weight:700">${r.isNew?'🎉 Nouvel animal !':'📦 Doublon · ×'+r.count}</div>`;
+  } else {
+    content = `<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;padding:8px">${validResults.map(r=>`<div style="text-align:center"><div style="font-size:36px;${r.isShiny?'filter:drop-shadow(0 0 8px #ffd700)':''}">${r.animal.emoji}${r.isShiny?'✨':''}</div><div style="font-size:9px;font-weight:800;margin-top:2px">${r.animal.name}</div>${r.isNew?'<div style="font-size:8px;color:var(--primary);font-weight:900">NEW</div>':''}</div>`).join('')}</div>`;
+  }
+  const shinyCount = validResults.filter(r=>r.isShiny).length;
+  document.getElementById('modal-root').innerHTML = `<div class="modal-bg open" onclick="this.remove();render();"><div class="modal-sheet" onclick="event.stopPropagation()" style="text-align:center"><div class="modal-handle"></div><div style="padding:30px 20px 0"><div style="font-size:22px;font-weight:900;margin-bottom:12px">${shinyCount>0?'✨ SHINY !':(validResults.length>1?'📦 Résultats':'✨ Nouvel animal !')}</div>${content}<button style="width:100%;padding:14px;background:linear-gradient(135deg,var(--primary),#4ade80);color:#0a1512;border:none;border-radius:12px;font-weight:900;font-family:inherit;font-size:14px;cursor:pointer;margin:20px 0" onclick="this.closest('.modal-bg').remove();render();">Continuer</button></div></div></div>`;
+  if(shinyCount > 0) showToast(`✨ ${shinyCount} shiny${shinyCount>1?'s':''} trouvé${shinyCount>1?'s':''} !`,'evolve');
+  else if(validResults.length === 1 && validResults[0].isNew) showToast(`🎉 ${validResults[0].animal.name} rejoint ton zoo !`,'success');
+}
+function buyCoins(){ if(state.gems<5) return; state.gems-=5; state.coins+=500; save(); render(); playBuy(); showToast('+500 🪙','success'); }
+function buyGems(){ if(state.coins<5000) return; state.coins-=5000; state.gems+=5; save(); render(); playBuy(); showToast('+5 💎','success'); }
+
+function showToast(msg, type){
+  type = type||'info'; const root = document.getElementById('toast-root'); const t = document.createElement('div');
+  t.className = 'toast toast-'+type; t.textContent = msg; root.appendChild(t);
+  requestAnimationFrame(()=>t.classList.add('show'));
+  setTimeout(()=>{ t.classList.remove('show'); setTimeout(()=>t.remove(),300); },2400);
+}
