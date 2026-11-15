@@ -13,6 +13,8 @@ function defaultState(){
     animals:{ lapin:{level:1,xp:0,specialLvl:0,owned:true,count:1,hasShiny:false,skills:[null,null]}, ecureuil:{level:1,xp:0,specialLvl:0,owned:true,count:1,hasShiny:false,skills:[null,null]}, grenouille:{level:1,xp:0,specialLvl:0,owned:true,count:1,hasShiny:false,skills:[null,null]} },
     zoneUnlocked:{foret:true,ocean:false,montagne:false,legendaire:false},
     arenaTeam:[], arenaHistory:[], leagueRewardsClaimed:{},
+    bossProgress: { 0: 0, 1: 0, 2: 0, 3: 0 }, // <-- ICI (à l'intérieur de l'objet)
+    bossVeterans: {}, // <-- ET ICI
     lastTick:Date.now(),
     stats:{totalFeeds:0,arenaWins:0,arenaLosses:0,eggsOpened:0,shinyFound:0,dupesSold:0},
     currentTab:'zoo'
